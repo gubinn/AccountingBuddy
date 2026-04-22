@@ -1,0 +1,13 @@
+# Dependencies
+venv/
+__pycache__/
+*.pyc
+
+# Sensitive
+.env
+
+# Runtime state
+state.json
+
+# IDE / tools
+.claude/

@@ -1,0 +1,22 @@
+cmb_senders:
+- 95555@message.cmbchina.com
+- 95555@cmbchina.com
+- ccsvc@message.cmbchina.com
+email_folder: INBOX
+account_mapping:
+  '8338': 631
+  '0611': 629
+  '3416': 630
+  '0062': 632
+  '0886': 633
+  '6611': 629
+category_mapping:
+  餐饮: 271
+  交通: 270
+  娱乐: 266
+  医疗: 295
+  教育: 280
+  水电: 285
+  工资: 272
+  转账: 262
+interval_minutes: 5

@@ -1,0 +1,14 @@
+[Unit]
+Description=Accounting Buddy - CMB email to BudgetPilot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/gubin/accounting_buddy/venv/bin/python /home/gubin/accounting_buddy/main.py
+WorkingDirectory=/home/gubin/accounting_buddy
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
