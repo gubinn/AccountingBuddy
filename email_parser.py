@@ -35,7 +35,7 @@ class Transaction:
     balance: float | None
     is_credit_card: bool = False
     raw_text: str = ""
-    tx_type: int = 1  # 1=expense, 2=income, 3=transfer
+    tx_type: int = 1  # 1=expense, 2=income, 3=transfer, 4=refund
     target_account_suffix: str = ""
 
     def to_api_payload(self, account_id: int, category_id: int | None,
@@ -43,7 +43,8 @@ class Transaction:
                        note_extra: str = "", confirmed: bool = True,
                        external_id: str | None = None,
                        tags: list[str] | None = None,
-                       ext_fields: dict | None = None) -> dict:
+                       ext_fields: dict | None = None,
+                       review_status: str | None = None) -> dict:
         note = (self.raw_text + (note_extra or "")).strip()
         payload = {
             "type": self.tx_type,
@@ -57,15 +58,17 @@ class Transaction:
             payload["transactionTime"] = self.time
         if external_id:
             payload["externalId"] = external_id
+        if review_status:
+            payload["reviewStatus"] = review_status
         if tags:
             payload["tags"] = tags
         if ext_fields:
             payload["extFields"] = ext_fields
-        if self.tx_type == 1:
+        if self.tx_type in (1, 4):
             payload["merchantName"] = self.merchant.strip()[:50]
         if self.tx_type == 3 and target_account_id:
             payload["targetAccountId"] = target_account_id
-        if self.tx_type in (1, 2) and category_id:
+        if self.tx_type in (1, 2, 4) and category_id:
             payload["categoryId"] = category_id
         return payload
 
@@ -507,7 +510,7 @@ def parse_format2(html: str, ref_date: datetime | None = None) -> list[Transacti
 
         amount = abs(float(amount_str))
         is_refund = kind in ("退货", "退款") or amount_str.startswith("-")
-        tx_type = 2 if is_refund else 1
+        tx_type = 4 if is_refund else 1
 
         if txs and txs[-1].merchant == merchant and txs[-1].amount == amount:
             continue

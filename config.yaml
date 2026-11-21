@@ -13,21 +13,18 @@ account_mapping:
 category_mapping:
   餐饮: 163
   交通: 165
-  住房: 169
+  居住: 169
   购物: 173
   医疗: 177
   教育: 181
-  娱乐: 183
+  休闲: 183
   水电: 215
   工资: 161
-  转账: 189
   投资: 171
   公积金: 404
-  通讯: 405
-  订阅服务: 406
+  通讯订阅: 405
   人情往来: 407
-  退款: 465
-  报销: 175
+  转账: 1239
 fallback_expense_category_id: 188
 fallback_income_category_id: 179
 interval_minutes: 5

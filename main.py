@@ -230,11 +230,11 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
 
                 category_id = mapper.classify(tx.merchant, tx.tx_type, note=tx.raw_text)
                 if category_id is None:
-                    if tx.tx_type == 1:
+                    if tx.tx_type in (1, 4):
                         category_id = fallback_expense
                     elif tx.tx_type == 2:
                         category_id = fallback_income
-                if tx.tx_type in (1, 2) and category_id is None:
+                if tx.tx_type in (1, 2, 4) and category_id is None:
                     logger.error("No category for tx %.2f %s (type=%d); configure "
                                  "fallback_expense_category_id / fallback_income_category_id",
                                  tx.amount, tx.merchant, tx.tx_type)
@@ -243,10 +243,23 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     continue
 
                 tags, ext_fields = annotations_for(tx)
+
+                # 对外转账先标记待复核：用户可在网页确认成“往来款/借出”，
+                # 或改为“人情往来/亲属转账”。待复核期间不计入收支/预算。
+                review_status = None
+                if tx.tx_type in (1, 2) and (tx.merchant.startswith("转账-")
+                                             or tx.merchant.startswith("转入-")):
+                    review_status = "PENDING"
+                    if tx.tx_type == 1:
+                        loan_category = mapper.resolve_category("往来款/借出")
+                        if loan_category:
+                            category_id = loan_category
+
                 payload = tx.to_api_payload(
                     account_id, category_id, target_account_id,
                     confirmed=not force_unconfirmed, external_id=external_id,
                     tags=tags, ext_fields=ext_fields,
+                    review_status=review_status,
                 )
 
                 if dry_run:

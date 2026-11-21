@@ -28,19 +28,18 @@ DEFAULT_KEYWORDS = {
              "瑞幸", "咖啡", "奶茶", "火锅", "烧烤", "必胜客", "汉堡", "披萨", "小吃"],
     "交通": ["地铁", "公交", "滴滴", "打车", "高德", "出租车", "停车", "加油", "高铁",
              "火车", "飞机", "携程", "飞猪", "共享单车", "高速"],
-    "住房": ["房租", "房贷", "物业", "水费", "电费", "燃气", "供暖", "维修"],
+    "居住": ["房租", "房贷", "物业", "水费", "电费", "燃气", "供暖", "维修"],
     "购物": ["超市", "淘宝", "京东", "拼多多", "天猫", "唯品会", "购物", "百货", "商城", "便利店"],
     "医疗": ["医院", "药店", "诊所", "体检", "药房", "挂号", "医疗"],
     "教育": ["教育", "课程", "培训", "学费", "图书", "书店", "考试"],
-    "娱乐": ["电影", "游戏", "爱奇艺", "优酷", "哔哩哔哩", "B站", "网易云", "QQ音乐",
-             "腾讯视频", "演出", "门票"],
-    "通讯": ["通讯", "话费", "联通", "移动", "电信", "流量", "宽带", "通信"],
-    "订阅服务": ["订阅", "云服务", "阿里云", "火山引擎", "OpenAI", "OpenRouter",
+    "休闲": ["电影", "游戏", "爱奇艺", "优酷", "哔哩哔哩", "B站", "网易云", "QQ音乐",
+             "腾讯视频", "演出", "门票", "旅行", "旅游"],
+    "通讯订阅": ["通讯", "话费", "联通", "移动", "电信", "流量", "宽带", "通信",
+                 "订阅", "云服务", "阿里云", "火山引擎", "OpenAI", "OpenRouter",
                  "DeepSeek", "会员"],
     "人情往来": ["红包", "礼金", "随礼", "群收款", "人情"],
     "投资": ["利息", "股息", "理财", "基金", "证券", "投资"],
     "公积金": ["公积金", "住房补贴"],
-    "退款": ["退货", "退款", "退票", "冲正"],
     "报销": ["报销"],
     "水电": ["水电", "物业", "燃气", "供暖"],
     "工资": ["工资", "薪资", "薪酬", "奖金", "补贴"],
@@ -273,10 +272,12 @@ class CategoryMapper:
         self._keywords = sorted(self.keyword_to_id.items(), key=lambda kv: len(kv[0]), reverse=True)
 
     def _type_ok(self, category_id: int, tx_type: int | None) -> bool:
-        if tx_type not in (1, 2):
+        # 退款(type=4) 使用支出分类
+        effective_type = 1 if tx_type == 4 else tx_type
+        if effective_type not in (1, 2):
             return True
         category_type = self.category_types.get(category_id)
-        return category_type is None or category_type == tx_type
+        return category_type is None or category_type == effective_type
 
     def is_child(self, category_id: int) -> bool:
         info = self.categories.get(category_id)
@@ -361,8 +362,9 @@ class CategoryMapper:
                     return cid
 
         # 6) Local LLM fallback
-        if allow_llm and self.llm is not None and tx_type in (1, 2):
-            cid = self.llm.classify(raw, note, tx_type)
+        llm_type = 1 if tx_type == 4 else tx_type
+        if allow_llm and self.llm is not None and llm_type in (1, 2):
+            cid = self.llm.classify(raw, note, llm_type)
             if cid is not None and self._type_ok(cid, tx_type):
                 return cid
         return None

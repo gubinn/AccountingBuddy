@@ -101,7 +101,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(tx.amount, 25.49)
         self.assertIn("数字人民币", tx.merchant)
 
-    def test_credit_card_refund_is_income(self):
+    def test_credit_card_refund_is_type4(self):
         html = ("<html><body><p>您的消费明细如下：</p>"
                 "<p>01:10:12</p><p>CNY -2.00</p>"
                 "<p>尾号0886 退货 支付宝-北京三快在线科技有限公司</p>"
@@ -109,7 +109,7 @@ class ParserTests(unittest.TestCase):
                 "</body></html>")
         txs = parse_email(html, ref_date=datetime(2026, 7, 13, 8, 0))
         self.assertEqual(len(txs), 2)
-        self.assertEqual((txs[0].tx_type, txs[0].amount), (2, 2.0))
+        self.assertEqual((txs[0].tx_type, txs[0].amount), (4, 2.0))
         self.assertEqual((txs[1].tx_type, txs[1].amount), (1, 10.0))
 
     def test_apple_pay_payment(self):

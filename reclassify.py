@@ -118,7 +118,7 @@ def main():
         cross_top = 0
         cross_details = Counter()
         for tx in txs:
-            if tx.get("type") not in (1, 2):
+            if tx.get("type") not in (1, 2, 4):
                 continue
             current = tx.get("categoryId")
             is_other = current in other_ids

@@ -141,26 +141,26 @@ rules:
       - 高速
 
   # ==================== 固定支出 ====================
-  - category: 固定支出/房租
+  - category: 居住/房租
     patterns:
       - 贝壳租房
       - 贝壳找房
       - 房租
 
-  - category: 固定支出/房贷
+  - category: 居住/房贷
     patterns:
       - 房贷
       - 按揭
       - 住房贷款
 
-  - category: 固定支出/保险
+  - category: 保险
     patterns:
       - 大都会人寿
       - 人寿保险
       - 保险
 
   # ==================== 专项支出 ====================
-  - category: 专项支出/旅行
+  - category: 休闲/旅行
     patterns:
       - 携程
       - 飞猪
@@ -182,19 +182,19 @@ rules:
       - 航运旅游
       - 出行旅游
 
-  - category: 专项支出/学费
+  - category: 教育/学费
     patterns:
       - 软件与微电子学院
       - 学费
 
-  - category: 专项支出/大额购物
+  - category: 购物/大额购物
     patterns:
       - 周生生
       - 珠宝
       - 黄金
 
   # ==================== 住房 ====================
-  - category: 住房/水电燃气
+  - category: 居住/水电燃气
     patterns:
       - 燃气
       - 电力
@@ -205,15 +205,15 @@ rules:
       - 京能
       - 供暖
 
-  - category: 住房/物业
+  - category: 居住/物业维修
     patterns:
       - 物业
 
-  - category: 住房/维修
+  - category: 居住/物业维修
     patterns:
       - 维修
 
-  - category: 住房
+  - category: 居住
     patterns:
       - 住房
 
@@ -247,7 +247,7 @@ rules:
       - 爱步
       - ECCO
 
-  - category: 购物/数码
+  - category: 购物/数码家电
     patterns:
       - 数码
       - 手机
@@ -256,7 +256,7 @@ rules:
       - 联想
       - Apple Store
 
-  - category: 购物/家具家电
+  - category: 购物/数码家电
     patterns:
       - 宜家
       - 苏泊尔
@@ -330,24 +330,24 @@ rules:
       - 教育
 
   # ==================== 娱乐 ====================
-  - category: 娱乐/电影
+  - category: 休闲/电影游戏
     patterns:
       - 电影
       - 影院
 
-  - category: 娱乐/游戏
+  - category: 休闲/电影游戏
     patterns:
       - 游戏
       - Steam
       - 腾讯游戏
 
-  - category: 娱乐/运动
+  - category: 休闲/运动
     patterns:
       - 健身
       - 运动
       - 体育
 
-  - category: 娱乐
+  - category: 休闲
     patterns:
       - 娱乐
       - 文化传媒
@@ -356,7 +356,7 @@ rules:
       - 乐摩吧
 
   # ==================== 通讯 / 订阅 / 人情 / 退款 / 报销 ====================
-  - category: 订阅服务/AI订阅
+  - category: 通讯订阅/AI订阅
     patterns:
       - 阿里云
       - 火山引擎
@@ -365,13 +365,13 @@ rules:
       - OpenRouter
       - OpenAI
 
-  - category: 订阅服务/存储订阅
+  - category: 通讯订阅/存储订阅
     patterns:
       - 云上艾珀
       - iCloud
       - 苹果云
 
-  - category: 通讯
+  - category: 通讯订阅
     patterns:
       - 中国移动
       - 中广电移动
@@ -386,7 +386,7 @@ rules:
       - 通信
       - 通訊
 
-  - category: 订阅服务
+  - category: 通讯订阅
     patterns:
       - 阿里云
       - 火山引擎
@@ -408,32 +408,25 @@ rules:
       - 礼金
       - 随礼
 
-  - category: 退款
-    patterns:
-      - 退货
-      - 退款
-      - 退票
-      - 冲正
-
-  - category: 报销
+  - category: 其他收入
     patterns:
       - 报销
 
   # ==================== 金融 ====================
-  - category: 金融/手续费
+  - category: 其他支出
     patterns:
       - 手续费
 
-  - category: 金融/利息
+  - category: 投资/利息
     patterns:
       - 利息支出
       - 利息
 
-  - category: 金融/投资亏损
+  - category: 其他支出
     patterns:
       - 投资亏损
 
-  - category: 金融
+  - category: 其他支出
     patterns:
       - 金融
 
@@ -444,11 +437,11 @@ rules:
       - 薪资
       - 薪酬
 
-  - category: 工资/奖金
+  - category: 工资/奖金补贴
     patterns:
       - 奖金
 
-  - category: 工资/补贴
+  - category: 工资/奖金补贴
     patterns:
       - 补贴
 
