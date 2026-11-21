@@ -335,6 +335,21 @@ rules:
       - 乐摩吧
 
   # ==================== 通讯 / 订阅 / 人情 / 退款 / 报销 ====================
+  - category: 订阅服务/AI订阅
+    patterns:
+      - 阿里云
+      - 火山引擎
+      - 深度求索
+      - DeepSeek
+      - OpenRouter
+      - OpenAI
+
+  - category: 订阅服务/存储订阅
+    patterns:
+      - 云上艾珀
+      - iCloud
+      - 苹果云
+
   - category: 通讯
     patterns:
       - 中国移动
