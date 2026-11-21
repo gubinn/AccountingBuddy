@@ -204,6 +204,12 @@ def build_merchant_map(merchants: list[dict], category_types: dict[int, int],
                        excluded: set[int] | None = None) -> dict[str, int]:
     """Build normalized merchant/alias -> category map from BudgetPilot merchants.
 
+    BudgetPilot aggregates raw payment-channel names (for example
+    "支付宝-北京三快在线科技有限公司") into a canonical merchant ("美团") and
+    keeps the raw names in ``aliases``. Both the canonical name and every raw
+    alias are learned here, so a correction made in the web UI still applies to
+    future emails carrying the raw name.
+
     Only non-"其他" categories are trusted as learned knowledge.
     """
     excluded = excluded or set()
@@ -218,6 +224,15 @@ def build_merchant_map(merchants: list[dict], category_types: dict[int, int],
         if name:
             result[name] = category_id
             result[normalize_merchant(name)] = category_id
+
+        # New: raw names kept by BudgetPilot's merchant aggregation.
+        for raw in merchant.get("aliases") or []:
+            raw = (raw or "").strip()
+            if raw:
+                result[raw] = category_id
+                result[normalize_merchant(raw)] = category_id
+
+        # Legacy/manual aliases are still comma separated.
         alias = merchant.get("alias") or ""
         for part in re.split(r"[,，;；/]", alias):
             part = part.strip()

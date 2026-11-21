@@ -182,13 +182,15 @@ class RuleTests(unittest.TestCase):
 class LearnedMappingTests(unittest.TestCase):
     def test_build_merchant_map_from_budgetpilot(self):
         merchants = [
-            {"name": "美团商户", "alias": "美团,外卖", "categoryId": 1},
+            {"name": "美团商户", "alias": "美团,外卖", "aliases": ["支付宝-北京三快在线科技有限公司"],
+             "categoryId": 1},
             {"name": "交通商户", "alias": None, "categoryId": 7},
             {"name": "未知商户", "alias": None, "categoryId": 5},  # 其他支出 -> ignore
         ]
         mapping = build_merchant_map(merchants, {1: 1, 7: 1, 5: 1}, excluded={5})
         self.assertEqual(mapping["美团商户"], 1)
         self.assertEqual(mapping["外卖"], 1)
+        self.assertEqual(mapping["支付宝-北京三快在线科技有限公司"], 1)
         self.assertEqual(mapping["交通商户"], 7)
         self.assertNotIn("未知商户", mapping)
 

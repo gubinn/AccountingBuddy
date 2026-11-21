@@ -325,3 +325,28 @@ BudgetPilot 已新增年度预算，专项支出按自然年管理；2026-12 月
 - `reclassify.py`：历史重分类 / 二级细分
 - `tests/`：44 个单元测试
 - `README.md`：当前行为与配置说明
+---
+
+## 2026-11-21（补充 14）— 商户学习映射对接聚合商户
+
+**背景**
+
+BudgetPilot 新增商户聚合后，`/api/v1/merchants` 返回的是归一化品牌名（如 `美团`），
+原始的支付渠道名称（如 `支付宝-北京三快在线科技有限公司`）保存在 `aliases` 中。
+如果采集端只看 `name`，网页上修正的分类无法命中后续原始名称相同的邮件。
+
+**改动**
+
+- `category_mapper.py: build_merchant_map` 新增读取 `aliases`：
+  - 聚合商户名本身加入映射；
+  - 每个原始名称加入映射；
+  - 原始名称同时加入 `normalize_merchant` 后的形式；
+  - 旧的逗号分隔 `alias` 字段继续兼容。
+- `tests/test_category_mapper.py` 增加原始名称映射断言。
+
+**验证**
+
+- `venv/bin/python -m unittest discover -s tests -q`：44 个测试全部通过。
+- 本机运行 `main.py` 日志：
+  - `Learned merchant mappings: 776 (from 253 merchants)`；
+  - 无新邮件，未创建重复商户。
