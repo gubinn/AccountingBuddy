@@ -41,7 +41,9 @@ class Transaction:
     def to_api_payload(self, account_id: int, category_id: int | None,
                        target_account_id: int | None = None,
                        note_extra: str = "", confirmed: bool = True,
-                       external_id: str | None = None) -> dict:
+                       external_id: str | None = None,
+                       tags: list[str] | None = None,
+                       ext_fields: dict | None = None) -> dict:
         note = (self.raw_text + (note_extra or "")).strip()
         payload = {
             "type": self.tx_type,
@@ -55,6 +57,10 @@ class Transaction:
             payload["transactionTime"] = self.time
         if external_id:
             payload["externalId"] = external_id
+        if tags:
+            payload["tags"] = tags
+        if ext_fields:
+            payload["extFields"] = ext_fields
         if self.tx_type == 1:
             payload["merchantName"] = self.merchant.strip()[:50]
         if self.tx_type == 3 and target_account_id:

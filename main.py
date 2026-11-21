@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
+from annotations import annotations_for
 from api_client import APIClient, APIError
 from category_mapper import (CategoryMapper, build_initial_mapping,
                              build_merchant_map)
@@ -241,9 +242,11 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     email_ok = False
                     continue
 
+                tags, ext_fields = annotations_for(tx)
                 payload = tx.to_api_payload(
                     account_id, category_id, target_account_id,
                     confirmed=not force_unconfirmed, external_id=external_id,
+                    tags=tags, ext_fields=ext_fields,
                 )
 
                 if dry_run:

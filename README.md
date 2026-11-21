@@ -166,6 +166,16 @@ llm_timeout: 120
 | 报销 | 报销 |
 | 转账 | 转账、转帐、汇款、还款 |
 
+**支付渠道与交易方式标签**（`annotations.py`）：
+
+- 支付渠道从商户名/备注前缀识别，写入 `extFields.channel`：支付宝、微信支付、京东支付、Apple Pay、银联、抖音支付、程支付；无法识别的交易不写。
+- 交易方式写入 `tags`：`内部转账`（所有转账）、`信用卡还款`、`资金归集`、`自动转账`、`自动扣款`（排除银联主动扣款）。
+- 新邮件在创建交易时自动携带这些字段；历史数据用 `annotate.py` 回填：
+  ```bash
+  ./venv/bin/python annotate.py --dry-run
+  ./venv/bin/python annotate.py
+  ```
+
 ### 4. API 客户端（`api_client.py`）
 
 封装 BudgetPilot REST API：

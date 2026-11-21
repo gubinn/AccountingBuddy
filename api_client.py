@@ -89,6 +89,11 @@ class APIClient:
         return self._request("POST", "/api/v1/transactions/reclassify",
                              json={"items": items})
 
+    def annotate_transactions(self, items: list[dict]) -> int:
+        """Bulk tags/extFields update: [{"id": 1, "addTags": [], "extFields": {}}, ...]"""
+        return self._request("POST", "/api/v1/transactions/annotate",
+                             json={"items": items})
+
     # --- Transactions with retry for idempotency ---
 
     def create_transaction_with_retry(self, data: dict, retries: int = 2, delay: int = 3) -> dict:

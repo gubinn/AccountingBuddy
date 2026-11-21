@@ -162,7 +162,7 @@ cd /home/gubin/accounting_buddy
 ./venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-- 当前 35 个用例全部通过。
+- 当前 44 个用例全部通过。
 - 覆盖：跨年日期、各邮件格式、字段截断、空时间、公积金推算、资产划转、规则匹配、名称清洗、学习映射、LLM 兜底顺序、UID 拉取/游标/标记已读。
 - `llm_cache.json`、`llm_review.csv` 已加入 `.gitignore`（含商户名，不应提交）。
 - `.env` 权限已改为 600。
@@ -246,14 +246,50 @@ cd /home/gubin/accounting_buddy
 
 ---
 
-### 11. 相关文件
+### 11. 支付渠道 extFields 与交易方式标签
+
+**识别规则（`annotations.py`）**
+
+- 支付渠道从商户名/备注前缀识别，写入 `extFields.channel`：
+  - 支付宝、微信支付（财付通/微信支付）、京东支付、Apple Pay、银联、抖音支付、程支付
+  - 无法识别的交易不写入 channel，不猜“其他”
+- 交易方式写入 `tags`：
+  - `内部转账`：所有 type=3 转账
+  - `信用卡还款`：转账/备注包含“信用卡还款”
+  - `资金归集`：备注包含“资金归集”
+  - `自动转账`：备注包含“自动转账”
+  - `自动扣款`：银行代扣类通知（`扣款人民币`，排除“银联扣款”这种主动支付）
+
+**接入方式**
+
+- 新邮件：`main.py` 在创建交易时携带 `tags` 和 `extFields.channel`。
+- 历史数据：新增 `annotate.py`，通过 BudgetPilot 的 `POST /transactions/annotate` 批量补充，只改 `tags`/`ext_fields`，不动余额、分类、预算。
+
+**历史回填结果**
+
+- 1306 笔中为 1163 笔补充了信息（其余无需渠道/标签或已处理）。
+- 渠道：支付宝 950、微信支付 95、京东支付 57、Apple Pay 4、银联 3、抖音支付 3、程支付 3；共 1115 笔有渠道，其余无渠道。
+- 标签：内部转账 23、自动扣款 18、资金归集 9、信用卡还款 9、自动转账 7。
+- 账户余额、交易数量未变。
+
+```bash
+cd /home/gubin/accounting_buddy
+./venv/bin/python annotate.py --dry-run   # 预览
+./venv/bin/python annotate.py             # 写入
+```
+
+---
+
+### 12. 相关文件
 
 - `email_fetcher.py`：UID 增量、状态游标、标记已读
 - `email_parser.py`：格式解析、日期/字段处理
+- `annotations.py`：支付渠道与交易方式标签识别
+- `annotate.py`：历史交易标签/扩展字段回填
 - `main.py`：交易编排、公积金推算、INVEST 映射、分类调用
 - `category_mapper.py`：分层分类、路径解析、名称清洗、学习映射
 - `merchant_rules.yaml`：别名/二级路径规则库
 - `llm_classifier.py`：Ollama 兜底、缓存、review
 - `reclassify.py`：历史重分类 / 二级细分
-- `tests/`：38 个单元测试
+- `tests/`：44 个单元测试
 - `README.md`：当前行为与配置说明
