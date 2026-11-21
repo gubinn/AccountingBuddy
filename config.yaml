@@ -29,6 +29,7 @@ fallback_expense_category_id: 188
 fallback_income_category_id: 179
 interval_minutes: 5
 investment_account_id: 6
+fixed_deposit_account_id: 15
 provident_fund_card: '3416'
 llm_enabled: true
 ollama_url: http://127.0.0.1:11434

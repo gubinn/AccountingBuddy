@@ -129,7 +129,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(len(txs), 2)
         self.assertEqual((txs[0].tx_type, txs[0].account_suffix,
                           txs[0].target_account_suffix, txs[0].amount),
-                         (3, "INVEST", "0611", 200000.0))
+                         (3, "FIXED_DEPOSIT", "0611", 200000.0))
         self.assertEqual((txs[1].tx_type, txs[1].merchant, txs[1].amount),
                          (2, "大额存单利息", 8719.44))
 
@@ -148,8 +148,15 @@ class ParserTests(unittest.TestCase):
         fx = ("<html><body>您账户0611于09月26日10:52发生自助购汇，购汇港币现汇1000.00，"
               "本次购汇人民币减少857.80，人民币余额43213.66</body></html>")
         tx = parse_email(fx, ref_date=datetime(2026, 9, 26, 11, 0))[0]
-        self.assertEqual((tx.tx_type, tx.target_account_suffix, tx.amount),
-                         (3, "INVEST", 857.80))
+        self.assertEqual((tx.tx_type, tx.target_account_suffix, tx.amount, tx.hkd_amount),
+                         (3, "INVEST", 857.80, 1000.0))
+
+        hkd_withdraw = ("<html><body>您账户0611于09月27日13:59柜台取款港币1000，余额0.00。"
+                        "本机构吸收的本外币存款依照《存款保险条例》受到保护。</body></html>")
+        tx = parse_email(hkd_withdraw, ref_date=datetime(2026, 9, 27, 15, 0))[0]
+        self.assertEqual(
+            (tx.tx_type, tx.account_suffix, tx.merchant, tx.hkd_amount, tx.amount),
+            (1, "INVEST", "港币柜台取现", 1000.0, 0.0))
 
     def test_payload_omits_invalid_time(self):
         html = ("<html><body>您账户0062定制的自动转账执行成功（收款人张三，"

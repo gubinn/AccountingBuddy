@@ -1,7 +1,7 @@
 import unittest
 
 from email_parser import Transaction
-from main import build_entries
+from main import _resolve_account, build_entries
 
 
 def _transfer(suffix: str, target: str, amount: float = 8724.0) -> Transaction:
@@ -10,6 +10,19 @@ def _transfer(suffix: str, target: str, amount: float = 8724.0) -> Transaction:
         date="2026-11-06", time="18:29:00", merchant="资金归集",
         amount=amount, balance=77972.84, tx_type=3,
     )
+
+
+class AccountResolveTests(unittest.TestCase):
+    def test_fixed_deposit_suffix(self):
+        self.assertEqual(
+            _resolve_account("FIXED_DEPOSIT", {}, None, 6, 15), 15)
+
+    def test_invest_suffix(self):
+        self.assertEqual(_resolve_account("INVEST", {}, None, 6, 15), 6)
+
+    def test_card_mapping(self):
+        self.assertEqual(
+            _resolve_account("0611", {"0611": 2}, None, 6, 15), 2)
 
 
 class ProvidentFundTests(unittest.TestCase):

@@ -14,7 +14,8 @@ from api_client import APIClient, APIError
 from category_mapper import (CategoryMapper, build_initial_mapping,
                              build_merchant_map)
 from email_fetcher import fetch_emails, mark_processed
-from email_parser import INVEST_SUFFIX, Transaction, parse_email
+from email_parser import FIXED_DEPOSIT_SUFFIX, INVEST_SUFFIX, Transaction, parse_email
+import fx_cache
 from llm_classifier import OllamaClassifier
 
 logger = logging.getLogger("accounting-buddy")
@@ -62,13 +63,15 @@ def _parse_email_datetime(value: str | None) -> datetime | None:
 
 
 def _resolve_account(suffix: str, account_map: dict, default_account,
-                     investment_account):
+                     investment_account, fixed_deposit_account):
     if not suffix:
         return None
     if suffix in account_map:
         return account_map[suffix]
     if suffix == INVEST_SUFFIX:
         return investment_account
+    if suffix == FIXED_DEPOSIT_SUFFIX:
+        return fixed_deposit_account
     return default_account
 
 
@@ -139,10 +142,11 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
         account_map = config.get("account_mapping") or {}
         default_account = config.get("default_account_id")
         investment_account = config.get("investment_account_id")
+        fixed_deposit_account = config.get("fixed_deposit_account_id")
         fallback_expense = config.get("fallback_expense_category_id")
         fallback_income = config.get("fallback_income_category_id")
-        logger.info("Account mapping: %s (default=%s, investment=%s)",
-                    account_map, default_account, investment_account)
+        logger.info("Account mapping: %s (default=%s, investment=%s, fixed_deposit=%s)",
+                    account_map, default_account, investment_account, fixed_deposit_account)
 
         # All transactions are unconfirmed during full_sync to avoid balance conflicts
         force_unconfirmed = full_sync
@@ -201,15 +205,30 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
             email_ok = True
             for external_id, tx in entries:
                 account_id = _resolve_account(tx.account_suffix, account_map,
-                                              default_account, investment_account)
+                                              default_account, investment_account,
+                                              fixed_deposit_account)
                 if account_id is None:
                     logger.error("No account mapping for suffix %s (tx %.2f %s); "
                                  "add it to account_mapping, set default_account_id, "
-                                 "or set investment_account_id for INVEST",
+                                 "or set investment_account_id/fixed_deposit_account_id",
                                  tx.account_suffix, tx.amount, tx.merchant)
                     stats["failed"] += 1
                     email_ok = False
                     continue
+
+                # 港币柜台取现：邮件只有 HKD 金额，用最近一笔同额购汇的人民币成本。
+                if tx.merchant == "港币柜台取现" and tx.hkd_amount is not None:
+                    cost = fx_cache.take_cost(tx.hkd_amount, consume=not dry_run)
+                    if cost is None:
+                        logger.warning(
+                            "No matching FX buy for HKD %.2f cash withdrawal "
+                            "(UID %d); skipped (RMB amount unknown)",
+                            tx.hkd_amount, uid)
+                        stats["skipped"] += 1
+                        continue
+                    tx.amount = cost
+                    logger.info("Matched HKD %.2f withdrawal to FX cost CNY %.2f (UID %d)",
+                                tx.hkd_amount, cost, uid)
 
                 target_account_id = None
                 if tx.tx_type == 3:
@@ -219,10 +238,11 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                         email_ok = False
                         continue
                     target_account_id = _resolve_account(tx.target_account_suffix, account_map,
-                                                     default_account, investment_account)
+                                                     default_account, investment_account,
+                                                     fixed_deposit_account)
                     if target_account_id is None:
                         logger.error("No account mapping for transfer target %s; "
-                                     "set investment_account_id if it is INVEST",
+                                     "set investment_account_id/fixed_deposit_account_id",
                                      tx.target_account_suffix)
                         stats["failed"] += 1
                         email_ok = False
@@ -274,6 +294,9 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     logger.info("Created tx %s (externalId=%s): %.2f %s @ %s [%s]",
                                 tx_id, external_id, tx.amount, tx.merchant, tx.date, status_str)
                     stats["created"] += 1
+                    # 记录购汇成本，供之后的港币取现配对
+                    if tx.hkd_amount is not None and tx.merchant.startswith("购汇(港币"):
+                        fx_cache.record_buy(tx.hkd_amount, tx.amount, tx.date, external_id)
                 except APIError as e:
                     logger.error("API error for tx %.2f %s: %s", tx.amount, tx.merchant, e.message)
                     stats["failed"] += 1

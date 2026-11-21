@@ -73,8 +73,8 @@ accounting_buddy/
 | 通用入账 | `入账<金额>元，余额...` | income | 补贴、转账等 |
 | Apple Pay / 线上支付 | `（设备卡号...）于...线上支付...` | expense | 含线上免密支付 |
 | 信用卡账单 | HTML 含 `消费明细` + `尾号` | expense | 多交易 HTML 表格，退货/退款记 `type=4`（冲减支出，不计收入） |
-| 资产划转 | 大额存单到期、证券保证金转出入、自助购汇 | transfer | 源/目标使用 `INVEST` 特殊账户 |
-| 港币柜台取现 | `柜台取款港币...` | - | 邮件只有港币金额，暂不自动入账（告警） |
+| 资产划转 | 大额存单到期、证券保证金转出入、自助购汇 | transfer | 大额存单本金用 `FIXED_DEPOSIT`（定期存款），证券保证金/购汇用 `INVEST`（投资账户） |
+| 港币柜台取现 | `柜台取款港币...` | expense | 邮件只有 HKD 金额；配对最近一笔同额购汇，用购汇邮件里的人民币成本入账；找不到配对只告警并跳过 |
 
 **数据结构**（`Transaction`）：
 
@@ -89,8 +89,9 @@ class Transaction:
     balance: float | None
     is_credit_card: bool
     raw_text: str
-    tx_type: int              # 1=支出, 2=收入, 3=转账
+    tx_type: int              # 1=支出, 2=收入, 3=转账, 4=退款
     target_account_suffix: str # 转账目标卡尾号
+    hkd_amount: float | None  # 购汇/港币取现的 HKD 金额（人民币金额由配对购汇提供）
 ```
 
 **解析策略**：先通过 HTML 纯文本判断格式（含 `消费明细` → 信用卡，含 `您账户`+`余额` → 普通通知），再分派到对应解析函数。多个正则并行扫描同一文本，因为一封邮件可能包含多条记录（如资金归集 + 普通消费）。
@@ -321,9 +322,16 @@ category_mapping:
 fallback_expense_category_id: 188   # 其他支出
 fallback_income_category_id: 179    # 其他收入
 
-# 大额存单/证券保证金/购汇等资产划转使用的投资账户 ID
+# 证券保证金/购汇等资产划转使用的投资账户 ID
 # 解析器用特殊后缀 INVEST 表示该账户
 investment_account_id: 6
+
+# 大额存单到期本金使用的定期存款账户 ID
+# 解析器用特殊后缀 FIXED_DEPOSIT 表示该账户
+fixed_deposit_account_id: 15
+
+# 港币柜台取现的人民币成本缓存（配对最近一笔同额购汇，文件 gitignore）
+# fx_cost_cache.json
 
 # 公积金卡：该卡的“资金归集”会先补一笔同额收入（分类：公积金）
 provident_fund_card: '3416'
