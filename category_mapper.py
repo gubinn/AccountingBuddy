@@ -94,15 +94,16 @@ class MerchantRuleSet:
                 data = yaml.safe_load(f) or {}
         self.prefixes = data.get("normalize", {}).get("prefixes") or DEFAULT_PREFIXES
         self.rules = data.get("rules") or []
-        pairs: list[tuple[str, str]] = []
+        pairs: list[tuple[str, str, tuple[str, ...]]] = []
         for rule in self.rules:
             category = rule.get("category")
             if not category:
                 continue
+            excludes = tuple(str(x) for x in (rule.get("exclude") or []))
             for pattern in rule.get("patterns", []):
                 pattern = str(pattern).strip() if pattern is not None else ""
                 if pattern:
-                    pairs.append((pattern, category))
+                    pairs.append((pattern, category, excludes))
         self._index = sorted(pairs, key=lambda item: len(item[0]), reverse=True)
 
     def normalize(self, text: str) -> str:
@@ -111,9 +112,12 @@ class MerchantRuleSet:
     def match_all(self, text: str) -> list[str]:
         normalized = self.normalize(text)
         result: list[str] = []
-        for pattern, category in self._index:
-            if pattern in normalized and category not in result:
-                result.append(category)
+        for pattern, category, excludes in self._index:
+            if pattern not in normalized or category in result:
+                continue
+            if any(ex and ex in normalized for ex in excludes):
+                continue
+            result.append(category)
         return result
 
     def match(self, text: str) -> str | None:
@@ -123,19 +127,23 @@ class MerchantRuleSet:
 
 
 def flatten_category_tree(tree: list[dict]) -> dict[int, dict]:
-    """Flatten the category tree into {id: {name, type, parent_id}}."""
+    """Flatten the category tree into {id: {name, type, parent_id, path}}."""
     result: dict[int, dict] = {}
 
-    def walk(nodes: list[dict]):
+    def walk(nodes: list[dict], ancestors: list[str]):
         for node in nodes or []:
+            name = node.get("name", "")
+            path = "/".join(ancestors + [name])
             result[node["id"]] = {
-                "name": node.get("name", ""),
+                "name": name,
                 "type": node.get("type"),
                 "parent_id": node.get("parentId", 0),
+                "path": path,
+                "parent_name": ancestors[-1] if ancestors else None,
             }
-            walk(node.get("children") or [])
+            walk(node.get("children") or [], ancestors + [name])
 
-    walk(tree)
+    walk(tree, [])
     return result
 
 
@@ -222,12 +230,23 @@ def build_merchant_map(merchants: list[dict], category_types: dict[int, int],
 class CategoryMapper:
     def __init__(self, mapping: dict[str, int], category_types: dict[int, int] | None = None,
                  merchant_map: dict[str, int] | None = None,
-                 rules_path: str | Path | None = None, llm: Any = None):
+                 rules_path: str | Path | None = None, llm: Any = None,
+                 categories: dict[int, dict] | None = None):
         self.mapping = mapping or {}
         self.category_types = category_types or {}
         self.merchant_map = merchant_map or {}
         self.rules = MerchantRuleSet(rules_path)
         self.llm = llm
+        self.categories = categories or {}
+        self.path_to_id: dict[str, int] = {}
+        self.name_to_ids: dict[str, list[int]] = {}
+        for cid, info in self.categories.items():
+            name = info.get("name", "")
+            path = info.get("path") or name
+            if path:
+                self.path_to_id[path] = cid
+            if name:
+                self.name_to_ids.setdefault(name, []).append(cid)
 
         self.keyword_to_id: dict[str, int] = {}
         for category_name, cid in self.mapping.items():
@@ -244,29 +263,78 @@ class CategoryMapper:
         category_type = self.category_types.get(category_id)
         return category_type is None or category_type == tx_type
 
+    def is_child(self, category_id: int) -> bool:
+        info = self.categories.get(category_id)
+        return bool(info and info.get("parent_id"))
+
+    def top_parent_id(self, category_id: int) -> int:
+        info = self.categories.get(category_id)
+        seen: set[int] = set()
+        while info and info.get("parent_id") and category_id not in seen:
+            seen.add(category_id)
+            category_id = info["parent_id"]
+            info = self.categories.get(category_id)
+        return category_id
+
+    def resolve_category(self, ref: str) -> int | None:
+        """Resolve '一级/二级', a config category name, or a unique category name."""
+        if not ref:
+            return None
+        if ref in self.path_to_id:
+            return self.path_to_id[ref]
+        if ref in self.mapping:
+            return self.mapping[ref]
+        ids = self.name_to_ids.get(ref)
+        return ids[0] if ids else None
+
     def classify(self, text: str, tx_type: int | None = None,
                  note: str = "", allow_llm: bool = True) -> int | None:
         raw = (text or "").strip()
         normalized = self.rules.normalize(raw)
 
-        # 1) Learned from BudgetPilot merchant table (user corrections)
+        # 1) Learned child category (explicit user correction) wins
+        learned_top = None
         for key in (raw, normalized):
             if not key:
                 continue
             cid = self.merchant_map.get(key)
-            if cid is not None and self._type_ok(cid, tx_type):
+            if cid is None or not self._type_ok(cid, tx_type):
+                continue
+            if self.is_child(cid):
                 return cid
+            if learned_top is None:
+                learned_top = cid
 
-        # 2) Curated alias rules (merchant first, then note; first type-compatible wins)
+        # 2) Rules: prefer a child category over a top-level match, so old
+        #    top-level merchant mappings don't block subcategory refinement.
+        rule_child = None
+        rule_top = None
         for candidate in (raw, note):
             if not candidate:
                 continue
-            for category_name in self.rules.match_all(candidate):
-                cid = self.mapping.get(category_name)
-                if cid is not None and self._type_ok(cid, tx_type):
-                    return cid
+            for category_ref in self.rules.match_all(candidate):
+                cid = self.resolve_category(category_ref)
+                if cid is None or not self._type_ok(cid, tx_type):
+                    continue
+                if self.is_child(cid):
+                    if rule_child is None:
+                        rule_child = cid
+                elif rule_top is None:
+                    rule_top = cid
+            if rule_child is not None:
+                break
+        if rule_child is not None:
+            return rule_child
 
-        # 3) Legacy category-name / keyword matching
+        # 3) Learned top-level category (user/auto merchant default)
+        if learned_top is not None:
+            return learned_top
+
+        # 4) Rule top-level fallback
+        if rule_top is not None:
+            return rule_top
+
+        # 5) Legacy category-name / keyword matching
         for variant in {raw, normalized}:
             if not variant:
                 continue
@@ -277,7 +345,7 @@ class CategoryMapper:
                 if kw and kw in variant and self._type_ok(cid, tx_type):
                     return cid
 
-        # 4) Local LLM fallback
+        # 6) Local LLM fallback
         if allow_llm and self.llm is not None and tx_type in (1, 2):
             cid = self.llm.classify(raw, note, tx_type)
             if cid is not None and self._type_ok(cid, tx_type):

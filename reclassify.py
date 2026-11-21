@@ -55,6 +55,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="只预览，不写库")
     parser.add_argument("--no-llm", action="store_true", help="不使用 Ollama 兜底")
+    parser.add_argument("--refine-subcategories", action="store_true",
+                        help="把一级分类交易细分到同一级下的二级分类")
     parser.add_argument("--limit", type=int, default=0, help="最多应用多少条（0=全部）")
     args = parser.parse_args()
 
@@ -67,8 +69,9 @@ def main():
         if changed:
             save_config(config)
         mapping = config.get("category_mapping") or {}
-        id_to_name = {cid: name for name, cid in mapping.items()}
-        id_to_name.update({cid: info["name"] for cid, info in categories.items()})
+        id_to_name = {cid: info["path"] for cid, info in categories.items()}
+        for name, cid in mapping.items():
+            id_to_name.setdefault(cid, name)
         other_ids = {config.get("fallback_expense_category_id"),
                      config.get("fallback_income_category_id")}
         other_ids |= {cid for cid, info in categories.items()
@@ -82,7 +85,28 @@ def main():
         merchant_map = build_merchant_map(merchants, category_types, excluded=other_ids)
         llm = None if args.no_llm else OllamaClassifier(config, mapping, category_types)
         mapper = CategoryMapper(mapping, category_types,
-                                merchant_map=merchant_map, llm=llm)
+                                merchant_map=merchant_map, llm=llm,
+                                categories=categories)
+
+        def is_child(cid):
+            return bool(categories.get(cid, {}).get("parent_id"))
+
+        def top_of(cid):
+            info = categories.get(cid)
+            seen = set()
+            while info and info.get("parent_id") and cid not in seen:
+                seen.add(cid)
+                cid = info["parent_id"]
+                info = categories.get(cid)
+            return cid
+
+        parents_with_children = {info["parent_id"] for info in categories.values()
+                                 if info.get("parent_id")}
+        top_with_children = {cid for cid, info in categories.items()
+                             if info.get("parent_id") == 0 and cid in parents_with_children}
+        if args.refine_subcategories:
+            logger.info("Subcategory refinement enabled: %d top-level categories",
+                        len(top_with_children))
 
         logger.info("Fetching transactions...")
         txs = fetch_all_transactions(api)
@@ -91,24 +115,44 @@ def main():
         changes: list[dict] = []
         before = Counter()
         proposed = Counter()
+        cross_top = 0
+        cross_details = Counter()
         for tx in txs:
             if tx.get("type") not in (1, 2):
                 continue
-            if tx.get("categoryId") not in other_ids:
+            current = tx.get("categoryId")
+            is_other = current in other_ids
+            is_refine_candidate = (args.refine_subcategories and not is_other
+                                   and current in top_with_children)
+            if not is_other and not is_refine_candidate:
                 continue
-            before[id_to_name.get(tx["categoryId"], "?")] += 1
+            before[id_to_name.get(current, "?")] += 1
             text = (tx.get("merchantName") or "").strip()
             note = tx.get("note") or ""
             new_id = mapper.classify(text or note, tx["type"], note=note,
                                      allow_llm=not args.no_llm)
-            if new_id and new_id != tx.get("categoryId"):
-                changes.append({"id": tx["id"], "categoryId": new_id})
-                proposed[id_to_name.get(new_id, str(new_id))] += 1
+            if not new_id or new_id == current:
+                continue
+            if is_refine_candidate:
+                # 只允许落到子分类；规则明确要求的跨大类（如 盒马/山姆 购物→餐饮/食材）放行并计数
+                if not is_child(new_id):
+                    continue
+                if top_of(new_id) != current:
+                    cross_top += 1
+                    cross_details[(id_to_name.get(current, "?"),
+                                   id_to_name.get(new_id, "?"),
+                                   text[:40])] += 1
+            changes.append({"id": tx["id"], "categoryId": new_id})
+            proposed[id_to_name.get(new_id, str(new_id))] += 1
 
-        logger.info("Other-category transactions: %d", sum(before.values()))
-        logger.info("Proposed changes: %d", len(changes))
+        logger.info("Candidate transactions: %d", sum(before.values()))
+        logger.info("Proposed changes: %d (cross-top: %d)", len(changes), cross_top)
         for name, count in proposed.most_common():
             logger.info("  -> %s: %d", name, count)
+        if cross_details:
+            logger.info("Cross-top details:")
+            for (old, new, merchant), count in cross_details.most_common(15):
+                logger.info("  %s -> %s: %d  %s", old, new, count, merchant)
         if not changes:
             return
 

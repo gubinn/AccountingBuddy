@@ -133,7 +133,7 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
         llm = OllamaClassifier(config, config.get("category_mapping") or {}, category_types)
         mapper = CategoryMapper(
             config.get("category_mapping") or {}, category_types,
-            merchant_map=merchant_map, llm=llm,
+            merchant_map=merchant_map, llm=llm, categories=_categories,
         )
         account_map = config.get("account_mapping") or {}
         default_account = config.get("default_account_id")

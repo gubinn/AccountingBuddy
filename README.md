@@ -103,23 +103,30 @@ class Transaction:
 
 **分类顺序（命中即止）**：
 
-1. **学习映射**：启动时拉取 BudgetPilot 商户表，`商户名/别名 → 分类`（只信任非「其他」分类）。你在网页把某笔交易的分类改对后，后端会同步更新关联商户的默认分类，以后同名商户自动沿用。
-2. **别名规则**（`merchant_rules.yaml`）：先清洗商户名（去掉 `支付宝-`、`财付通-`、公司后缀、`快捷支付` 等），再按品牌/法律主体匹配（三快→美团、拉扎斯→饿了么、中国铁路→12306、贝壳租房→住房…）。规则同时参考邮件备注，按 pattern 长度和交易类型过滤。
-3. **分类名/关键词匹配**（旧逻辑，长词优先）。
-4. **本地 Ollama 兜底**：前三层都失败时，让模型在现有分类里选一个。置信度低于 `llm_min_confidence` 的不落库，写入 `llm_review.csv`；结果缓存在 `llm_cache.json`，同一商户不重复调用。
-5. 仍无结果 → `fallback_expense_category_id` / `fallback_income_category_id`。
+1. **学习到的二级分类**：商户表里明确关联到子分类（如 `餐饮/外卖`）时优先采用。
+2. **别名规则命中的二级分类**（`merchant_rules.yaml`）：规则可以写完整路径，如 `餐饮/外卖`、`交通/打车`、`住房/房租/房贷`。启动时从 BudgetPilot 分类树建立 `一级/二级 → ID` 路径表，规则返回子分类 ID；旧的一级商户映射不会阻止细分。
+3. **学习到的一级分类**：商户表里只有一级分类时作为兜底。
+4. **别名规则的一级分类**：如携程/飞猪明确算「交通」，不细分。
+5. **分类名/关键词匹配**（旧逻辑，长词优先）。
+6. **本地 Ollama 兜底**：前面都失败时，让模型在现有分类里选一个。置信度低于 `llm_min_confidence` 的不落库，写入 `llm_review.csv`；结果缓存在 `llm_cache.json`，同一商户不重复调用。
+7. 仍无结果 → `fallback_expense_category_id` / `fallback_income_category_id`。
+
+规则支持 `exclude` 排除项，例如「携程/飞猪」排除「娱乐/旅行」，「北京大学」排除「口腔/医院」，避免长 pattern 误分。
 
 **自动补全映射**：每次运行只为 `category_mapping` 中缺失的分类生成 ID；通讯、订阅服务、人情往来、退款、报销、公积金等新分类会自动加入。
 
 **历史重分类**：
 
 ```bash
-./venv/bin/python reclassify.py --dry-run     # 预览
-./venv/bin/python reclassify.py --no-llm      # 只用规则/学习/关键词
-./venv/bin/python reclassify.py               # 含 Ollama 兜底
+./venv/bin/python reclassify.py --dry-run                      # 预览「其他」分类
+./venv/bin/python reclassify.py --no-llm                       # 只修「其他」分类
+./venv/bin/python reclassify.py --dry-run --refine-subcategories  # 预览一级→二级细分
+./venv/bin/python reclassify.py --no-llm --refine-subcategories   # 执行细分
 ```
 
-只处理当前仍为「其他支出/其他收入」的交易，通过批量接口只改 `category_id`，不动余额、预算和预警。
+- 默认只处理「其他支出/其他收入」；
+- `--refine-subcategories` 额外把一级分类交易细分到子类；只允许落到子分类，规则明确要求的跨大类（如盒马/山姆：购物→餐饮/食材）会放行并统计；
+- 全部通过批量接口只改 `category_id`，不动余额、预算和预警。
 
 **LLM 配置**（`config.yaml`）：
 
