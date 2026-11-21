@@ -56,14 +56,14 @@ class ParserTests(unittest.TestCase):
 
     def test_outgoing_and_incoming_transfers(self):
         out = ("<html><body>您账户0611于02月28日15:54转账汇款人民币2000.00，"
-               "余额253598.42，收款人：顾斌，请以收款人实际入账为准</body></html>")
+               "余额253598.42，收款人：张三，请以收款人实际入账为准</body></html>")
         tx = parse_email(out, ref_date=datetime(2026, 2, 28, 16, 0))[0]
-        self.assertEqual((tx.tx_type, tx.amount, tx.merchant), (1, 2000.0, "转账-顾斌"))
+        self.assertEqual((tx.tx_type, tx.amount, tx.merchant), (1, 2000.0, "转账-张三"))
 
         incoming = ("<html><body>您账户8338于02月28日收到本行转入人民币2000.00，"
-                    "余额5000.00，付方顾斌（0611），备注：转账</body></html>")
+                    "余额5000.00，付方张三（0611），备注：转账</body></html>")
         tx = parse_email(incoming, ref_date=datetime(2026, 2, 28, 16, 0))[0]
-        self.assertEqual((tx.tx_type, tx.amount, tx.merchant), (2, 2000.0, "转入-顾斌"))
+        self.assertEqual((tx.tx_type, tx.amount, tx.merchant), (2, 2000.0, "转入-张三"))
 
         interbank = ("<html><body>您账户0611于05月12日他行实时转入人民币14600.00，"
                      "余额349050.98，付方苏商银行瓜子汽车服务</body></html>")
@@ -80,9 +80,9 @@ class ParserTests(unittest.TestCase):
 
     def test_unionpay_and_generic_credit(self):
         up_in = ("<html><body>您账户0611于04月10日11:05银联入账人民币20836.57元，"
-                 "余额261441.98元（顾斌）</body></html>")
+                 "余额261441.98元（张三）</body></html>")
         tx = parse_email(up_in, ref_date=datetime(2026, 4, 10, 12, 0))[0]
-        self.assertEqual((tx.tx_type, tx.merchant), (2, "银联入账-顾斌"))
+        self.assertEqual((tx.tx_type, tx.merchant), (2, "银联入账-张三"))
 
         up_out = ("<html><body>您账户0611于04月25日13:12银联扣款人民币3400.00元，"
                   "余额283313.14元（银联在线支付）</body></html>")

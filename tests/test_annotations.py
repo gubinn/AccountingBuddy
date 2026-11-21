@@ -14,7 +14,7 @@ class ChannelTests(unittest.TestCase):
             "银联扣款-银联在线支付": "银联",
             "程支付-携程旅行网": "程支付",
             "抖音支付-某商户": "抖音支付",
-            "转账-顾斌": None,
+            "转账-张三": None,
         }
         for merchant, expected in cases.items():
             self.assertEqual(detect_channel(merchant), expected, merchant)
@@ -33,11 +33,11 @@ class TagTests(unittest.TestCase):
             derive_tags(3, "信用卡还款(尾号0062)", "向尾号为0062的信用卡还款"),
             ["内部转账", "信用卡还款"],
         )
-        self.assertEqual(derive_tags(3, "转账-顾斌", "转账汇款"), ["内部转账"])
+        self.assertEqual(derive_tags(3, "转账-张三", "转账汇款"), ["内部转账"])
 
     def test_method_tags(self):
         self.assertEqual(
-            derive_tags(1, "转账-赵淑娥", "自动转账执行成功（收款人赵淑娥）"),
+            derive_tags(1, "转账-李四", "自动转账执行成功（收款人李四）"),
             ["自动转账"],
         )
         self.assertEqual(

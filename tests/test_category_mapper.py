@@ -50,6 +50,16 @@ class FakeAPI:
             {"id": 19, "parentId": 0, "name": "投资", "type": 2, "children": [
                 {"id": 191, "parentId": 19, "name": "利息", "type": 2, "children": []},
             ]},
+            {"id": 40, "parentId": 0, "name": "固定支出", "type": 1, "children": [
+                {"id": 401, "parentId": 40, "name": "房租", "type": 1, "children": []},
+                {"id": 402, "parentId": 40, "name": "房贷", "type": 1, "children": []},
+                {"id": 403, "parentId": 40, "name": "保险", "type": 1, "children": []},
+            ]},
+            {"id": 42, "parentId": 0, "name": "专项支出", "type": 1, "children": [
+                {"id": 421, "parentId": 42, "name": "旅行", "type": 1, "children": []},
+                {"id": 422, "parentId": 42, "name": "学费", "type": 1, "children": []},
+                {"id": 423, "parentId": 42, "name": "大额购物", "type": 1, "children": []},
+            ]},
         ]
 
 
@@ -107,11 +117,11 @@ class ChildCategoryTests(unittest.TestCase):
         self.assertEqual(m.classify("支付宝-北京三快在线科技有限公司", 1), 11)  # 餐饮/外卖
         self.assertEqual(m.classify("支付宝-星巴克", 1), 12)                  # 餐饮/饮品
         self.assertEqual(m.classify("支付宝-盒马", 1), 13)                    # 餐饮/食材
-        self.assertEqual(m.classify("支付宝-中国铁路网络有限公司", 1), 71)    # 交通/公交地铁
-        self.assertEqual(m.classify("支付宝-贝壳租房", 1), 32)                # 住房/房租/房贷
+        self.assertEqual(m.classify("支付宝-中国铁路网络有限公司", 1), 421)  # 专项支出/旅行
+        self.assertEqual(m.classify("支付宝-贝壳租房", 1), 401)              # 固定支出/房租
         self.assertEqual(m.classify("支付宝-北京大学", 1), 161)               # 教育/课程
         self.assertEqual(m.classify("支付宝-北京大学口腔医院", 1), 152)      # 医疗/门诊
-        self.assertEqual(m.classify("支付宝-携程", 1), 7)                     # 交通一级
+        self.assertEqual(m.classify("支付宝-携程", 1), 421)                  # 专项支出/旅行
         self.assertEqual(m.classify("入账工资", 2), 41)                       # 工资/基本工资
 
     def test_learned_child_wins_over_rules(self):
@@ -124,10 +134,10 @@ class ChildCategoryTests(unittest.TestCase):
         m = self.mapper(merchant_map={"支付宝-北京三快在线科技有限公司": 1})
         self.assertEqual(m.classify("支付宝-北京三快在线科技有限公司", 1), 11)
 
-    def test_rule_top_is_kept_for_ctrip(self):
-        # 用户明确要求携程/飞猪算交通，不应被分到娱乐/旅行
+    def test_ctrip_is_special_travel(self):
+        # 旅行改为专项预算，携程/飞猪不再按普通交通处理
         m = self.mapper()
-        self.assertEqual(m.classify("支付宝-携程旅行网", 1), 7)
+        self.assertEqual(m.classify("支付宝-携程旅行网", 1), 421)
 
 
 class RuleTests(unittest.TestCase):
@@ -146,8 +156,13 @@ class RuleTests(unittest.TestCase):
         cases = {
             "支付宝-北京三快在线科技有限公司": "餐饮/外卖",
             "支付宝-上海拉扎斯信息科技有限公司": "餐饮/外卖",
-            "支付宝-中国铁路网络有限公司": "交通/公交地铁",
-            "支付宝-贝壳租房": "住房/房租/房贷",
+            "支付宝-中国铁路网络有限公司": "专项支出/旅行",
+            "支付宝-贝壳租房": "固定支出/房租",
+            "中美联泰大都会人寿保险有限": "固定支出/保险",
+            "支付宝-北京大学软件与微电子学院": "专项支出/学费",
+            "京东支付-周生生京东自营旗舰店": "专项支出/大额购物",
+            "支付宝-北京首都国际机场股份有限公司": "专项支出/旅行",
+            "支付宝-上海风采航运旅游有限公司": "专项支出/旅行",
             "支付宝-上海盒马网络科技有限公司": "餐饮/食材",
             "支付宝-阿里云计算有限公司": "订阅服务/AI订阅",
             "支付宝-中广电移动网络有限公司": "通讯",
