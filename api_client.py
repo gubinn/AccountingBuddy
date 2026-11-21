@@ -50,6 +50,11 @@ class APIClient:
     def get_account(self, account_id: int) -> dict:
         return self._request("GET", f"/api/v1/accounts/{account_id}")
 
+    # --- Merchants ---
+
+    def get_merchants(self, active: bool = True) -> list[dict]:
+        return self._request("GET", "/api/v1/merchants", params={"isActive": active})
+
     # --- Categories ---
 
     def get_categories(self, type_: int | None = None) -> list[dict]:
@@ -79,37 +84,29 @@ class APIClient:
     def update_transaction(self, tx_id: int, data: dict) -> dict:
         return self._request("PUT", f"/api/v1/transactions/{tx_id}", json=data)
 
+    def reclassify_transactions(self, items: list[dict]) -> int:
+        """Bulk category-only update: [{"id": 1, "categoryId": 2}, ...]"""
+        return self._request("POST", "/api/v1/transactions/reclassify",
+                             json={"items": items})
+
     # --- Transactions with retry for idempotency ---
 
     def create_transaction_with_retry(self, data: dict, retries: int = 2, delay: int = 3) -> dict:
-        """Create transaction with retry on timeout/duplicate (code 10004)."""
+        """Create a transaction, retrying transient network failures.
+
+        BudgetPilot deduplicates by the `externalId` field: a retry after a
+        timeout returns the already-created transaction with code 0 instead of
+        creating a duplicate. Code 10004 means a *name* conflict and is raised.
+        """
         last_exc = None
         for attempt in range(retries + 1):
             try:
                 return self.create_transaction(data)
-            except httpx.TimeoutException:
-                last_exc = RuntimeError("Request timeout")
+            except (httpx.TimeoutException, httpx.ConnectError,
+                    httpx.ReadError, httpx.RemoteProtocolError) as e:
+                last_exc = e
                 if attempt < retries:
-                    logger.warning("API timeout, retry %d/%d after %ds", attempt + 1, retries, delay)
+                    logger.warning("API network error (%s), retry %d/%d after %ds",
+                                   type(e).__name__, attempt + 1, retries, delay)
                     time.sleep(delay)
-            except APIError as e:
-                if e.code == 10004:
-                    logger.info("Transaction already exists (idempotency hit)")
-                    return self._find_existing_transaction(data)
-                raise
         raise last_exc
-
-    def _find_existing_transaction(self, data: dict) -> dict:
-        params = {
-            "accountId": data["accountId"],
-            "startDate": data.get("transactionDate"),
-            "endDate": data.get("transactionDate"),
-            "minAmount": data["amount"],
-            "maxAmount": data["amount"],
-            "size": 50,
-        }
-        result = self.get_transactions(**params)
-        for tx in result.get("list", []):
-            if tx["amount"] == data["amount"] and tx["accountId"] == data["accountId"]:
-                return tx
-        return {"status": "duplicate_but_not_found"}

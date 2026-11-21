@@ -4,19 +4,38 @@ cmb_senders:
 - ccsvc@message.cmbchina.com
 email_folder: INBOX
 account_mapping:
-  '8338': 631
-  '0611': 629
-  '3416': 630
-  '0062': 632
-  0886: 633
-  '6611': 629
+  '8338': 1
+  '0611': 2
+  '6611': 2
+  '3416': 3
+  '0062': 4
+  0886: 5
 category_mapping:
-  餐饮: 271
-  交通: 270
-  娱乐: 266
-  医疗: 295
-  教育: 280
-  水电: 285
-  工资: 272
-  转账: 262
+  餐饮: 163
+  交通: 165
+  住房: 169
+  购物: 173
+  医疗: 177
+  教育: 181
+  娱乐: 183
+  水电: 215
+  工资: 161
+  转账: 189
+  投资: 171
+  公积金: 404
+  通讯: 405
+  订阅服务: 406
+  人情往来: 407
+  退款: 465
+  报销: 175
+fallback_expense_category_id: 188
+fallback_income_category_id: 179
 interval_minutes: 5
+investment_account_id: 6
+provident_fund_card: '3416'
+llm_enabled: true
+ollama_url: http://127.0.0.1:11434
+ollama_model: qwen2.5-7b
+llm_min_confidence: 0.8
+llm_timeout: 120
+ollama_disable_thinking: false
