@@ -148,8 +148,12 @@ class ParserTests(unittest.TestCase):
         fx = ("<html><body>您账户0611于09月26日10:52发生自助购汇，购汇港币现汇1000.00，"
               "本次购汇人民币减少857.80，人民币余额43213.66</body></html>")
         tx = parse_email(fx, ref_date=datetime(2026, 9, 26, 11, 0))[0]
-        self.assertEqual((tx.tx_type, tx.target_account_suffix, tx.amount, tx.hkd_amount),
-                         (3, "INVEST", 857.80, 1000.0))
+        self.assertEqual(
+            (tx.tx_type, tx.target_account_suffix, tx.amount, tx.hkd_amount, tx.zero_amount),
+            (3, "0611", 857.80, 1000.0, True))
+        payload = tx.to_api_payload(2, None, 2, external_id="cmb:1772265161:0")
+        self.assertEqual(payload["amount"], 0.0)
+        self.assertEqual(payload["targetAccountId"], 2)
 
         hkd_withdraw = ("<html><body>您账户0611于09月27日13:59柜台取款港币1000，余额0.00。"
                         "本机构吸收的本外币存款依照《存款保险条例》受到保护。</body></html>")

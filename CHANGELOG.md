@@ -15,7 +15,12 @@
 - 取现时配对**最近一笔同额未使用购汇**，用购汇邮件里的 RMB 金额记投资账户支出（分类兜底「其他支出」）；找不到配对只告警并跳过，不做汇率换算。
 - `fx_cost_cache.json` 已加入 `.gitignore`，不提交。
 
-### 3. 测试
+### 3. 自助购汇
+
+- 购汇是同一账户内部换算，交易改为「本卡 → 本卡」自转账，API 金额写 `0`，不再把人民币成本在银行卡和投资账户之间转移。
+- HKD 金额和人民币成本仍保存在 `Transaction.hkd_amount` / `fx_cost_cache.json`，用于后续取现配对。
+
+### 4. 测试
 
 - 新增 `tests/test_fx_cache.py`；扩展 `test_email_parser.py`、`test_main.py`。
 - `51` 个单元测试全部通过。

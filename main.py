@@ -292,7 +292,8 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     tx_id = result.get("id", "?")
                     status_str = "confirmed" if not force_unconfirmed else "pending"
                     logger.info("Created tx %s (externalId=%s): %.2f %s @ %s [%s]",
-                                tx_id, external_id, tx.amount, tx.merchant, tx.date, status_str)
+                                tx_id, external_id, payload.get("amount", tx.amount),
+                                tx.merchant, tx.date, status_str)
                     stats["created"] += 1
                     # 记录购汇成本，供之后的港币取现配对
                     if tx.hkd_amount is not None and tx.merchant.startswith("购汇(港币"):

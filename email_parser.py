@@ -39,6 +39,8 @@ class Transaction:
     target_account_suffix: str = ""
     # 港币取现/购汇用：邮件里的 HKD 金额（人民币金额由配对购汇提供）
     hkd_amount: float | None = None
+    # 购汇是同一账户内部换算，金额记 0，不影响余额
+    zero_amount: bool = False
 
     def to_api_payload(self, account_id: int, category_id: int | None,
                        target_account_id: int | None = None,
@@ -50,7 +52,7 @@ class Transaction:
         note = (self.raw_text + (note_extra or "")).strip()
         payload = {
             "type": self.tx_type,
-            "amount": round(self.amount, 2),
+            "amount": 0.0 if self.zero_amount else round(self.amount, 2),
             "accountId": account_id,
             "transactionDate": self.date,
             "note": note[:200],
@@ -183,12 +185,12 @@ RE_ASSET_FROM_SECURITIES = re.compile(
     r"您账户(\d+)\s*于(\d{2})月(\d{2})日(\d{2}):(\d{2})发生证券保证金转银行活期"
     r"人民币(\d+\.\d{2})，余额(\d+\.\d{2})"
 )
-# 自助购汇：人民币减少，港币现汇进入投资账户
+# 自助购汇：同一账户内部换算（HKD 金额 + 人民币成本，用于配对取现）
 RE_ASSET_FX_BUY = re.compile(
     r"您账户(\d+)\s*于(\d{2})月(\d{2})日(\d{2}):(\d{2})发生自助购汇，"
     r"购汇港币现汇(\d+\.\d{2})，本次购汇人民币减少(\d+\.\d{2})，人民币余额(\d+\.\d{2})"
 )
-# 港币柜台取现（邮件只给港币金额，无法可靠折算成人民币，保留告警）
+# 港币柜台取现：邮件只有 HKD 金额，人民币成本由最近一笔同额购汇提供
 RE_ASSET_HKD_WITHDRAW = re.compile(
     r"您账户(\d+)\s*于(\d{2})月(\d{2})日(\d{2}):(\d{2})柜台取款港币(\d+)，余额(\d+(?:\.\d{2})?)"
 )
@@ -428,16 +430,16 @@ def parse_format1(text: str, ref_date: datetime | None = None) -> list[Transacti
             is_credit_card=False, raw_text=text.strip(), tx_type=3,
         ))
 
-    # 自助购汇：人民币转入投资账户（港币现汇）
+    # 自助购汇：同一账户内部换算，金额记 0；HKD 金额和人民币成本用于配对取现
     for m in RE_ASSET_FX_BUY.finditer(text):
         card, month, day, hour, minute, hkd, cny, balance = m.groups()
         txs.append(Transaction(
-            account_suffix=card, target_account_suffix=INVEST_SUFFIX,
+            account_suffix=card, target_account_suffix=card,
             date=_resolve_date(month, day, ref_date),
             time=f"{hour}:{minute}:00", merchant=f"购汇(港币{hkd})",
             amount=float(cny), balance=float(balance),
             is_credit_card=False, raw_text=text.strip(), tx_type=3,
-            hkd_amount=float(hkd),
+            hkd_amount=float(hkd), zero_amount=True,
         ))
 
     # 港币柜台取现：邮件只有 HKD 金额，人民币金额由最近一笔同额购汇提供。
