@@ -443,12 +443,12 @@ def parse_format1(text: str, ref_date: datetime | None = None) -> list[Transacti
         ))
 
     # 港币柜台取现：邮件只有 HKD 金额，人民币金额由最近一笔同额购汇提供。
-    # 先在这里生成一条支出占位，main.py 用 FX 成本缓存补上人民币金额；
+    # 支出记在邮件里的银行卡账户（如 0611），main.py 用 FX 成本缓存补人民币金额；
     # 找不到配对时只告警并跳过。
     for m in RE_ASSET_HKD_WITHDRAW.finditer(text):
         card, month, day, hour, minute, hkd, balance = m.groups()
         txs.append(Transaction(
-            account_suffix=INVEST_SUFFIX,
+            account_suffix=card,
             date=_resolve_date(month, day, ref_date),
             time=f"{hour}:{minute}:00", merchant="港币柜台取现",
             amount=0.0, balance=float(balance),

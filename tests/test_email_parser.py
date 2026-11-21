@@ -160,7 +160,7 @@ class ParserTests(unittest.TestCase):
         tx = parse_email(hkd_withdraw, ref_date=datetime(2026, 9, 27, 15, 0))[0]
         self.assertEqual(
             (tx.tx_type, tx.account_suffix, tx.merchant, tx.hkd_amount, tx.amount),
-            (1, "INVEST", "港币柜台取现", 1000.0, 0.0))
+            (1, "0611", "港币柜台取现", 1000.0, 0.0))
 
     def test_payload_omits_invalid_time(self):
         html = ("<html><body>您账户0062定制的自动转账执行成功（收款人张三，"
