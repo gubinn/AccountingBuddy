@@ -111,8 +111,27 @@ def _parse_email_date(msg: email_module.message.Message) -> datetime | None:
     return dt
 
 
+def _envelope_sender(envelope) -> str:
+    """Build a comparable From string from an IMAP ENVELOPE."""
+    addresses = getattr(envelope, "from_", None) or ()
+    parts = []
+    for addr in addresses:
+        mailbox = getattr(addr, "mailbox", None) or b""
+        host = getattr(addr, "host", None) or b""
+        name = getattr(addr, "name", None) or b""
+        if isinstance(mailbox, bytes):
+            mailbox = mailbox.decode("utf-8", errors="replace")
+        if isinstance(host, bytes):
+            host = host.decode("utf-8", errors="replace")
+        display = _decode_header_value(name) if name else ""
+        address = f"{mailbox}@{host}" if mailbox and host else mailbox
+        parts.append(f"{display} <{address}>" if display else address)
+    return ", ".join(part for part in parts if part)
+
+
 def _open_client(host: str, port: int, user: str, password: str) -> IMAPClient:
-    client = IMAPClient(host=host, port=port, ssl=True)
+    # 没有超时的 IMAP 连接在服务器无响应时会把 oneshot 服务挂死。
+    client = IMAPClient(host=host, port=port, ssl=True, timeout=30)
     try:
         client.login(user, password)
         try:
@@ -167,8 +186,27 @@ def fetch_emails(host: str, port: int, user: str, password: str,
             return [], last_uid
 
         max_scanned_uid = max(target_msgs)
-        response = client.fetch(target_msgs, [b"RFC822"])
 
+        # 163 的 IMAP 搜索在服务端不可用（FROM/TEXT/SUBJECT 均返回 0），
+        # 但仍可只拉 ENVELOPE 头先筛发件人，避免下载非招行邮件的完整正文。
+        fetch_uids = target_msgs
+        if senders:
+            envelope_resp = client.fetch(target_msgs, [b"ENVELOPE"])
+            fetch_uids = []
+            for uid in target_msgs:
+                data = envelope_resp.get(uid) or {}
+                envelope = data.get(b"ENVELOPE")
+                if envelope is None:
+                    # 取不到头信息时退回下载正文，避免漏掉招行邮件
+                    fetch_uids.append(uid)
+                    continue
+                sender = _envelope_sender(envelope)
+                if any(s.lower() in sender.lower() for s in senders):
+                    fetch_uids.append(uid)
+            logger.info("Sender filter: %d/%d messages are CMB",
+                        len(fetch_uids), len(target_msgs))
+
+        response = client.fetch(fetch_uids, [b"RFC822"]) if fetch_uids else {}
         emails: list[dict] = []
         for uid, data in sorted(response.items()):
             raw_bytes = data.get(b"RFC822")

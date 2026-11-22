@@ -49,23 +49,42 @@ def record_buy(hkd: float, cny: float, tx_date: str, external_id: str) -> None:
     _save(entries)
 
 
-def take_cost(hkd: float, consume: bool = True) -> float | None:
-    """Return the CNY cost of the most recent unused same-HKD FX buy.
-
-    With consume=False (dry-run) the entry is left untouched.
-    """
+def find_cost(hkd: float) -> dict | None:
+    """Return the most recent unused FX buy matching the HKD amount."""
     if hkd is None:
         return None
     target = round(float(hkd), 2)
-    entries = _load()
     candidates = [
-        (idx, entry) for idx, entry in enumerate(entries)
+        (idx, entry) for idx, entry in enumerate(_load())
         if not entry.get("used") and round(float(entry.get("hkd", 0)), 2) == target
     ]
     if not candidates:
         return None
     _, entry = max(candidates, key=lambda pair: (pair[1].get("date", ""), pair[0]))
+    return entry
+
+
+def mark_used(entry: dict | None) -> None:
+    """Consume an FX buy after the withdrawal was recorded successfully."""
+    if not entry:
+        return
+    external_id = entry.get("external_id")
+    entries = _load()
+    for item in entries:
+        if item.get("external_id") == external_id and not item.get("used"):
+            item["used"] = True
+            _save(entries)
+            return
+
+
+def take_cost(hkd: float, consume: bool = True) -> float | None:
+    """Return the CNY cost of the most recent unused same-HKD FX buy.
+
+    With consume=False (dry-run) the entry is left untouched.
+    """
+    entry = find_cost(hkd)
+    if entry is None:
+        return None
     if consume:
-        entry["used"] = True
-        _save(entries)
+        mark_used(entry)
     return float(entry["cny"])

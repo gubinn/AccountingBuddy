@@ -42,11 +42,11 @@ accounting_buddy/
 
 **流程**：
 1. 从 `state.json` 加载上次处理的最大 UID
-2. 连接 IMAP，登录，选择邮箱文件夹
+2. 连接 IMAP（30 秒超时），登录，选择邮箱文件夹
 3. 搜索 UID 范围 `(last_uid+1):*`，**不再依赖 `UNSEEN`**——手机/网页先读过的邮件也会被处理
-4. 批量 `FETCH RFC822` 获取完整邮件内容
+4. 先对范围内邮件 `FETCH ENVELOPE` 预筛发件人，只对命中的招行邮件 `FETCH RFC822`
 5. 逐封解析：解码 Subject/From（支持 GBK/UTF-8 编码头），提取 HTML 或 plain text 正文，并读取 `Date` 头作为交易日期/时间的参考
-6. 非发件人邮件在客户端过滤（163 的 IMAP `OR` 搜索不可用，统一走客户端过滤）
+6. 163 服务端的 `FROM / TEXT / SUBJECT` 搜索实测均返回 0（不可用），因此发件人过滤在客户端完成；取不到 ENVELOPE 的邮件会退回下载正文，避免漏账
 
 **首次运行**：`state.json` 中没有该文件夹记录时，游标会初始化到当前最新 UID 并直接返回，**不会重放整个邮箱**。需要导入历史邮件时显式运行 `--full-sync`。
 
@@ -215,9 +215,13 @@ llm_timeout: 120
 ```
 load_env() → load_config() → APIClient()
          ↓
+fetch_emails()  # 按 UID 范围拉取，不标已读
+         ↓
+无新邮件 → 推进游标后直接退出（空闲轮次不拉分类树/商户表）
+         ↓
 build_initial_mapping()  # 补全缺失的分类映射 + 分类类型表
          ↓
-CategoryMapper() → fetch_emails()  # 按 UID 范围拉取，不标已读
+CategoryMapper()  # 构建学习映射与分类器
          ↓
 for each email (UID 升序):
     parse_email(ref_date=邮件日期) → for each tx:

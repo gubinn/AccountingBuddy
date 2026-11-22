@@ -113,6 +113,34 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
     api = APIClient(env["api_base_url"], env["api_key"])
 
     try:
+        # 先检查新邮件：空跑（每 5 分钟一次）时不再拉分类树和商户表。
+        try:
+            emails, max_scanned_uid = fetch_emails(
+                host=env["email_host"], port=env["email_port"],
+                user=env["email_user"], password=env["email_password"],
+                folder=config.get("email_folder", "INBOX"),
+                senders=config.get("cmb_senders", []),
+                full_sync=full_sync, dry_run=dry_run,
+            )
+        except Exception as e:
+            logger.error("Failed to fetch emails: %s", e)
+            return
+
+        if not emails:
+            logger.info("No new CMB emails to process")
+            # Advance past scanned non-CMB mail so it is not downloaded again
+            if not dry_run and not full_sync and max_scanned_uid > 0:
+                try:
+                    mark_processed(
+                        host=env["email_host"], port=env["email_port"],
+                        user=env["email_user"], password=env["email_password"],
+                        folder=config.get("email_folder", "INBOX"),
+                        uids=[], state_uid=max_scanned_uid,
+                    )
+                except Exception as e:
+                    logger.error("Failed to advance email cursor: %s", e)
+            return
+
         mapping_changed, category_types, _categories = build_initial_mapping(api, config)
         if mapping_changed and not dry_run:
             save_config(config)
@@ -151,33 +179,6 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
         # All transactions are unconfirmed during full_sync to avoid balance conflicts
         force_unconfirmed = full_sync
 
-        try:
-            emails, max_scanned_uid = fetch_emails(
-                host=env["email_host"], port=env["email_port"],
-                user=env["email_user"], password=env["email_password"],
-                folder=config.get("email_folder", "INBOX"),
-                senders=config.get("cmb_senders", []),
-                full_sync=full_sync, dry_run=dry_run,
-            )
-        except Exception as e:
-            logger.error("Failed to fetch emails: %s", e)
-            return
-
-        if not emails:
-            logger.info("No new CMB emails to process")
-            # Advance past scanned non-CMB mail so it is not downloaded again
-            if not dry_run and not full_sync and max_scanned_uid > 0:
-                try:
-                    mark_processed(
-                        host=env["email_host"], port=env["email_port"],
-                        user=env["email_user"], password=env["email_password"],
-                        folder=config.get("email_folder", "INBOX"),
-                        uids=[], state_uid=max_scanned_uid,
-                    )
-                except Exception as e:
-                    logger.error("Failed to advance email cursor: %s", e)
-            return
-
         stats = {"total": 0, "created": 0, "failed": 0, "skipped": 0, "emails_failed": 0}
         successful_uids: list[int] = []
         contiguous_uid = 0
@@ -193,8 +194,10 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
             stats["total"] += len(entries)
 
             if not entries:
-                logger.warning("No transactions parsed from email UID %d, skipping "
-                               "(use --dry-run -v and check the format)", uid)
+                logger.error("No transactions parsed from email UID %d (%s); marked as "
+                             "processed. Check the format with --dry-run -v if this "
+                             "is a new bank email template.",
+                             uid, email.get("subject", ""))
                 stats["skipped"] += 1
                 if not dry_run and not full_sync:
                     successful_uids.append(uid)
@@ -217,18 +220,20 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     continue
 
                 # 港币柜台取现：邮件只有 HKD 金额，用最近一笔同额购汇的人民币成本。
+                # 成本在交易成功入账后才标记消费；API 失败时保留，下一轮可重试。
+                fx_entry = None
                 if tx.merchant == "港币柜台取现" and tx.hkd_amount is not None:
-                    cost = fx_cache.take_cost(tx.hkd_amount, consume=not dry_run)
-                    if cost is None:
+                    fx_entry = fx_cache.find_cost(tx.hkd_amount)
+                    if fx_entry is None:
                         logger.warning(
                             "No matching FX buy for HKD %.2f cash withdrawal "
                             "(UID %d); skipped (RMB amount unknown)",
                             tx.hkd_amount, uid)
                         stats["skipped"] += 1
                         continue
-                    tx.amount = cost
+                    tx.amount = float(fx_entry["cny"])
                     logger.info("Matched HKD %.2f withdrawal to FX cost CNY %.2f (UID %d)",
-                                tx.hkd_amount, cost, uid)
+                                tx.hkd_amount, tx.amount, uid)
 
                 target_account_id = None
                 if tx.tx_type == 3:
@@ -264,14 +269,15 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
 
                 tags, ext_fields = annotations_for(tx)
 
-                # 对外转账先标记待复核：用户可在网页确认成“往来款/借出”，
+                # 对外转账先标记待复核：用户可在网页确认成“往来款/借出款”，
                 # 或改为“人情往来/亲属转账”。待复核期间不计入收支/预算。
                 review_status = None
                 if tx.tx_type in (1, 2) and (tx.merchant.startswith("转账-")
                                              or tx.merchant.startswith("转入-")):
                     review_status = "PENDING"
                     if tx.tx_type == 1:
-                        loan_category = mapper.resolve_category("往来款/借出")
+                        loan_category = (mapper.resolve_category("往来款/借出款")
+                                         or mapper.resolve_category("往来款/借出"))
                         if loan_category:
                             category_id = loan_category
 
@@ -298,6 +304,8 @@ def run(dry_run: bool = False, verbose: bool = False, full_sync: bool = False):
                     # 记录购汇成本，供之后的港币取现配对
                     if tx.hkd_amount is not None and tx.merchant.startswith("购汇(港币"):
                         fx_cache.record_buy(tx.hkd_amount, tx.amount, tx.date, external_id)
+                    if fx_entry is not None:
+                        fx_cache.mark_used(fx_entry)
                 except APIError as e:
                     logger.error("API error for tx %.2f %s: %s", tx.amount, tx.merchant, e.message)
                     stats["failed"] += 1
