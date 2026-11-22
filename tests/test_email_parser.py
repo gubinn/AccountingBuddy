@@ -170,6 +170,30 @@ class ParserTests(unittest.TestCase):
         payload = tx.to_api_payload(1, 261)
         self.assertNotIn("transactionTime", payload)
 
+    def test_credit_card_same_amount_same_merchant_not_deduped(self):
+        # 每日信用管家里同一天连续两笔相同金额、相同商户的消费是两笔真实交易，
+        # 不能按“上一笔商户+金额相同”去重。
+        html = """<html><body>
+        <div>2026/10/03 您的消费明细如下：</div>
+        <div>13:26:25</div><div>CNY 3.34</div>
+        <div>尾号0886 消费 支付宝-Alipay Payment Servi</div>
+        <div>14:39:04</div><div>HKD 268.00</div>
+        <div>尾号0886 消费 SHAKE SHACK IFC</div>
+        <div>17:13:57</div><div>CNY 3.34</div>
+        <div>尾号0886 消费 支付宝-Alipay Payment Servi</div>
+        <div>18:54:27</div><div>CNY 5.14</div>
+        <div>尾号0886 消费 支付宝-余仁堂大藥粧</div>
+        </body></html>"""
+
+        txs = parse_email(html, ref_date=datetime(2026, 10, 4, 10, 0))
+
+        self.assertEqual(
+            [(t.time, t.amount, t.merchant) for t in txs],
+            [("13:26:25", 3.34, "支付宝-Alipay Payment Servi"),
+             ("17:13:57", 3.34, "支付宝-Alipay Payment Servi"),
+             ("18:54:27", 5.14, "支付宝-余仁堂大藥粧")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

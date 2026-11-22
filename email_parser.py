@@ -490,6 +490,7 @@ def parse_format2(html: str, ref_date: datetime | None = None) -> list[Transacti
         stmt_date = f"{y}-{int(m):02d}-{int(d):02d}"
 
     txs = []
+    seen = set()
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
     for i, line in enumerate(lines):
@@ -530,8 +531,13 @@ def parse_format2(html: str, ref_date: datetime | None = None) -> list[Transacti
         is_refund = kind in ("退货", "退款") or amount_str.startswith("-")
         tx_type = 4 if is_refund else 1
 
-        if txs and txs[-1].merchant == merchant and txs[-1].amount == amount:
+        # 只在「日期 + 时间 + 商户 + 金额 + 类型」完全相同时去重。
+        # 不能只看商户和金额：同一天连续两笔相同金额的支付（例如两次 3.34 天星小轮）
+        # 是合法的两笔交易，之前按“上一笔商户+金额相同”跳过，导致第二笔漏记。
+        key = (row_date, time_str, merchant, amount, tx_type)
+        if key in seen:
             continue
+        seen.add(key)
 
         txs.append(Transaction(
             account_suffix=card_tail,
