@@ -1,0 +1,1 @@
+"""Chat-driven transaction intake (Telegram / WhatsApp)."""

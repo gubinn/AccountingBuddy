@@ -4,16 +4,21 @@
 
 ## 概述
 
-**Accounting Buddy** 是一个自动记账工具，用于监听招商银行（CMB）发来的交易通知邮件，自动解析其中的交易信息，并通过 API 录入到记账系统（BudgetPilot）中。
+**Accounting Buddy** 是一个自动记账工具。它有两条入口：
+
+1. 监听招商银行（CMB）发来的交易通知邮件，自动解析并录入 BudgetPilot；
+2. 通过 Telegram 接收文字或支付截图，本地 OCR + 本地模型解析后录入（[CHAT_INTAKE.md](CHAT_INTAKE.md)）。
 
 ### 架构总览
 
 ```
 招商银行邮件通知 ──IMAP──→ email_fetcher ──→ email_parser ──→ category_mapper ──→ api_client ──→ BudgetPilot API
                          (按 UID 拉取新邮件)  (正则提取交易)      (商户分类)          (HTTP POST)      (按 externalId 幂等写入)
+
+Telegram 文字/截图 ──长轮询──→ intake（OCR + qwen2.5）──→ category_mapper ──→ api_client ──→ BudgetPilot API
 ```
 
-运行方式：systemd timer 每 5 分钟触发一次 oneshot 服务。
+运行方式：邮件是 systemd timer 每 5 分钟触发一次 oneshot；聊天记账是常驻的 `accounting-intake.service`。
 
 ---
 
@@ -28,11 +33,15 @@ accounting_buddy/
 ├── email_parser.py        # 邮件正则解析 → 结构化交易记录
 ├── category_mapper.py     # 商户名 → 账本分类 ID 映射
 ├── api_client.py          # BudgetPilot API 封装（含重试/幂等）
+├── intake_daemon.py       # 聊天记账入口（Telegram 长轮询）
+├── intake/                # 聊天记账：OCR、抽取、账户、回复
 ├── config.yaml            # 运行时配置（发件人、映射表、间隔）
-├── .env                   # 敏感凭证（邮箱密码、API Key）
+├── .env                   # 敏感凭证（邮箱密码、API Key、Bot Token）
 ├── state.json             # 已处理邮件 UID 追踪（增量去重）
+├── intake_state.json      # Telegram offset 与最近一次聊天记账
 ├── accounting-buddy.service  # systemd 服务定义
 ├── accounting-buddy.timer    # systemd 定时器定义
+├── accounting-intake.service # 聊天记账常驻服务
 └── venv/                  # Python 虚拟环境
 ```
 
@@ -249,6 +258,23 @@ log summary
 - `Type=oneshot`：运行完退出
 - 输出到 journal（`journalctl -u accounting-buddy` 查看日志）
 
+### 7. 聊天记账（Telegram）
+
+`intake_daemon.py` 是一个常驻长轮询服务，接收文字、支付截图或账单截图，解析后直接写入 BudgetPilot：
+
+- 文字短格式（`午饭 35 微信`）走规则，自然语言/银行短信走本地 qwen2.5；
+- 图片用 RapidOCR 在本机识别，再走同一套抽取；
+- 账户支持 `尾号1234`、`卡号1234`、`(1234)`、完整卡号后四位，并排除金额/日期；
+- 分类复用邮件链路的商户学习和 `category_mapper`；消息里直接出现分类名（如「房租收入」）时优先命中；
+- **先发预览，不直接入账**：按钮确认入账 / 标为待确认 / 取消 / 修改内容；
+- 幂等键 `chat:telegram:<chat_id>:<message_id>`，重复点击或重投不会重复记账；
+- 同账户、同金额、前后一天内已有交易时在预览里提示；
+- `/confirm`、`/cancel`、`/edit` 文字命令可用；`/undo` 撤销上一条已入账消息。
+
+识别分工：OCR 负责读图，本地 qwen2.5 负责把文字结构化，账户和分类由确定性规则匹配。详见 [CHAT_INTAKE.md](CHAT_INTAKE.md)。
+
+完整配置、安全说明和排障见 **[CHAT_INTAKE.md](CHAT_INTAKE.md)**。
+
 ---
 
 ## 使用指南
@@ -262,7 +288,7 @@ python3 -m venv venv
 # 2. 安装依赖
 ./venv/bin/pip install -e .
 # 或手动安装
-./venv/bin/pip install imapclient beautifulsoup4 httpx pyyaml python-dotenv
+./venv/bin/pip install imapclient beautifulsoup4 httpx pyyaml python-dotenv rapidocr-onnxruntime
 ```
 
 ### 配置
@@ -450,3 +476,4 @@ cd /home/gubin/accounting_buddy
 | httpx>=0.27 | HTTP API 调用 |
 | pyyaml>=6.0 | YAML 配置读写 |
 | python-dotenv>=1.0 | `.env` 环境变量加载 |
+| rapidocr-onnxruntime>=1.4 | 聊天记账的本地中文 OCR（CPU） |

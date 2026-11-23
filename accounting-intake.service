@@ -1,0 +1,17 @@
+[Unit]
+Description=Accounting Buddy - Telegram chat transaction intake
+After=network-online.target budgetpilot.service
+Wants=network-online.target budgetpilot.service
+
+[Service]
+Type=simple
+ExecStart=/home/gubin/accounting_buddy/venv/bin/python /home/gubin/accounting_buddy/intake_daemon.py
+WorkingDirectory=/home/gubin/accounting_buddy
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

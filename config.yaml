@@ -37,3 +37,14 @@ ollama_model: qwen2.5-7b
 llm_min_confidence: 0.8
 llm_timeout: 120
 ollama_disable_thinking: false
+intake:
+  use_llm: true
+  llm_timeout: 120
+  # 不填则用 default_account_id，再退回第一个启用账户
+  default_account_id: null
+  # 消息里出现这些词时使用对应账户，例如：微信: 1
+  account_aliases: {}
+  duplicate_check: true
+  duplicate_lookback_days: 1
+  # 预览等待确认的时长
+  confirm_ttl_minutes: 30

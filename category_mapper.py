@@ -350,6 +350,23 @@ class CategoryMapper:
         if rule_top is not None:
             return rule_top
 
+        # 4b) Any known category name present in the message, longest first.
+        #     This catches explicit hints such as "房租收入" that are not in
+        #     category_mapping or merchant_rules. Type checking prevents an
+        #     income hint from selecting an expense category.
+        by_name = sorted(
+            self.categories.items(),
+            key=lambda kv: (len(kv[1].get("name") or ""), self.is_child(kv[0])),
+            reverse=True,
+        )
+        for variant in (raw, note):
+            if not variant:
+                continue
+            for cid, info in by_name:
+                name = info.get("name") or ""
+                if len(name) >= 2 and name in variant and self._type_ok(cid, tx_type):
+                    return cid
+
         # 5) Legacy category-name / keyword matching
         for variant in {raw, normalized}:
             if not variant:

@@ -1,5 +1,30 @@
 # 变更记录
 
+## 2026-11-23（新功能）— Telegram 聊天记账（预览确认）
+
+- 新增常驻服务 `intake_daemon.py` / `accounting-intake.service`：Telegram 长轮询，接收文字、支付截图、账单截图；不开公网端口。
+- **确认制**：解析结果先作为预览发回，不写账本。预览带四个按钮：确认入账（`isConfirmed=true`）、标为待确认（`isConfirmed=false`）、取消、修改内容；预览默认 30 分钟有效。
+- 文字命令：`/confirm`、`/cancel`、`/edit [内容]`；`/edit` 或「修改内容」后，下一条消息按修正内容重新解析，并沿用原始消息的 `externalId`。
+- 抽取分两层：短格式（`午饭 35 微信`）走确定性规则；自然语言、银行短信、OCR 文本走本地 `qwen2.5-7b` 输出 JSON。模型不可用时退回保守正则。
+- 图片用 RapidOCR（CPU）在本机识别，不调用云端视觉模型；本机 MX150 2GB 显存不适合跑视觉大模型。
+- 分类复用 `category_mapper` 和商户学习；账户按 `intake.account_aliases` → 账户名 → 卡号尾号 → `default_account_id` → 首个启用账户解析。
+- 账户尾号匹配：支持 `尾号1234`、`卡号1234`、`(1234)`、完整卡号后四位和独立 4 位数字；排除金额、日期等数字；多账户共用尾号时用银行名区分。
+- 分类新增“消息中出现的分类名”匹配，最长优先并校验收支类型；说明或截图里写「房租收入」时直接命中对应分类，不再落到「其他收入」。
+- 模型没有给出商户时，短说明会被当作商户兜底（如「房租收入」→ 商户「房租」）。
+- 幂等键 `chat:telegram:<chat_id>:<message_id>`，多笔追加 `:idx`。确认、重试、服务重启、双击按钮都只会入账一次。
+- 重复检测在预览阶段执行：前后一天同账户同金额已有交易时提示疑似 ID，但不阻止确认；需要时可主动点「标为待确认」。
+- 预览草稿持久化在 `intake_state.json`（含解析字段、payload、预览消息 ID、原始消息 ID），服务重启后按钮仍有效；每条 chat 最多 5 条，过期自动清理。
+- `/undo` 删除上一条已入账消息产生的交易，余额和预算由 BudgetPilot 回滚；待确认交易不计入。
+- 安全：`TELEGRAM_ALLOWED_CHAT_IDS` 白名单，非白名单消息/回调丢弃并记录 chat id；token 只放 `.env`；OCR 和模型均在本机。
+- 安全加固：抑制 httpx/httpcore 的 INFO 日志（Telegram token 在 URL 路径里），异常消息统一替换 token，下载失败不再用 `raise_for_status()` 以免 URL 进日志。
+- 配置：`config.yaml` 新增 `intake` 段（含 `confirm_ttl_minutes`）；`.env.example` 新增 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ALLOWED_CHAT_IDS`；`intake_state.json` 加入 `.gitignore`。
+- 新增 `CHAT_INTAKE.md`，README 增加入口说明、项目结构和依赖。
+- 测试：全套 105 个测试通过，其中 intake 覆盖解析、日期、LLM JSON、退款纠正、账户别名与尾号、分类名匹配、幂等、重复检测、多笔、预览不写库、确认/待确认/取消、双击幂等、修改重解析、过期、undo、Telegram update/callback、offset 和草稿持久化；用临时交易和真实截图跑通「OCR → 抽取 → 预览 → 确认 → 删除」端到端流程。测试中的卡号使用 1111/2222/3333/1234 占位，不包含真实尾号。
+- 已知限制：重复检测只覆盖「已有交易 → 聊天入账」方向；先聊天、后收到同一笔招行邮件时，邮件链路仍会再记一笔，需要人工核对或用 `/undo`。银行会发邮件的卡消费优先走邮件链路。
+- 待办：需要在 @BotFather 创建专用 bot，把 token 填进 `.env` 后启动服务。不要复用 OpenClaw 的 bot，也不要让两个进程同时轮询同一个 token（`409 Conflict`）。
+
+---
+
 ## 2026-11-22（补录）— 按信用卡账单补录 15 笔 HKD 消费
 
 - 上轮遗留的 15 笔 HKD 未入账，与招行信用卡账单中 15 笔 Apple Pay 港币消费逐笔一致：按账单「交易地金额」原币一一匹配（15 个 HKD 金额互不重复），无多无少。
