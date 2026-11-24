@@ -7,6 +7,7 @@ no transport code, so Telegram (and later WhatsApp) can share it.
 
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from typing import Any
@@ -104,8 +105,15 @@ class IntakeService:
         self.config = config or {}
         self.intake_config = self.config.get("intake") or {}
 
-        self.accounts = self.api.get_accounts()
-        self.resolver = AccountResolver(self.accounts, self.config)
+        # Accounts are edited in the web UI while this daemon keeps running.
+        # Reload them periodically (and immediately when a message falls back
+        # to the default account) so a newly added bank account is usable
+        # without restarting the service.
+        self._account_loaded_at = 0.0
+        self._last_force_refresh = 0.0
+        self.accounts: list[dict] = []
+        self.resolver = AccountResolver([], self.config)
+        self._reload_accounts()
 
         changed, category_types, categories = build_initial_mapping(self.api, self.config)
         if changed:
@@ -145,6 +153,49 @@ class IntakeService:
             llm=llm,
             categories=categories,
         )
+
+    def _reload_accounts(self) -> None:
+        accounts = self.api.get_accounts() or []
+        if not accounts and self.accounts:
+            # A transient empty/error response must not erase the accounts
+            # already in use; keep the previous list and let the next
+            # refresh try again.
+            raise IntakeError("account list is empty")
+        self.accounts = accounts
+        self.resolver = AccountResolver(accounts, self.config)
+        self._account_loaded_at = time.monotonic()
+
+    def _refresh_accounts(self, force: bool = False) -> bool:
+        """Reload the account list, at most once per TTL (or 30s when forced).
+
+        Returns True when the reload succeeded, so the caller can retry an
+        account resolution against the fresh list.
+        """
+        now = time.monotonic()
+        try:
+            ttl = float(self.intake_config.get("account_refresh_seconds", 300))
+        except (TypeError, ValueError):
+            ttl = 300.0
+        if not force and now - self._account_loaded_at < ttl:
+            return False
+        if force and now - self._last_force_refresh < 30:
+            return False
+
+        before = {int(account["id"]) for account in self.accounts}
+        try:
+            self._reload_accounts()
+        except Exception as exc:  # noqa: BLE001 - keep the last known accounts
+            logger.warning("Intake account refresh failed: %s", exc)
+            if force:
+                self._last_force_refresh = now
+            return False
+        if force:
+            self._last_force_refresh = now
+        after = {int(account["id"]) for account in self.accounts}
+        if after != before:
+            logger.info("Intake refreshed accounts: %d -> %d (ids %s -> %s)",
+                        len(before), len(after), sorted(before), sorted(after))
+        return True
 
     # ---------- public ----------
 
@@ -228,7 +279,13 @@ class IntakeService:
                      external_id: str, channel: str, message_id: str,
                      caption: str = "") -> CreatedTransaction:
         draft.merchant = self._caption_merchant(draft.merchant, caption)
+        self._refresh_accounts()
         account_id = self.resolver.resolve(draft.account_hint, raw_text)
+        if self.resolver.used_fallback and self._refresh_accounts(force=True):
+            # A new account may have been added since the last refresh.
+            account_id = self.resolver.resolve(draft.account_hint, raw_text)
+        logger.info("Intake account resolved: id=%s (%s)",
+                    account_id, self.resolver.last_reason)
         if account_id is None:
             raise IntakeError("没有可用账户，请在 config.yaml 配置 intake.default_account_id")
 

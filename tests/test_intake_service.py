@@ -42,6 +42,19 @@ class FakeAPI:
         self.deleted.append(tx_id)
 
 
+class MutableAccountAPI(FakeAPI):
+    def __init__(self):
+        super().__init__()
+        self.account_rows = [
+            {"id": 1, "name": "招商银行储蓄卡(1111)"},
+            {"id": 2, "name": "微信钱包"},
+            {"id": 22, "name": "中国银行储蓄卡(1234)"},
+        ]
+
+    def get_accounts(self):
+        return list(self.account_rows)
+
+
 def config():
     return {
         "category_mapping": {},
@@ -168,6 +181,18 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(item.category_id, 1324)
         self.assertEqual(item.draft.tx_type, 2)
         self.assertEqual(item.draft.amount, 1000.0)
+
+    def test_new_account_is_used_without_restart(self):
+        api = MutableAccountAPI()
+        service = IntakeService(api, config())
+        # Simulate adding an account in the web UI while the daemon is running.
+        api.account_rows.append({"id": 24, "name": "汇丰中国(5555/066)"})
+
+        result = service.prepare("支出 100 汇丰 尾号066", channel="telegram",
+                                 chat_id="42", message_id="106")
+
+        self.assertEqual(result.created[0].account_id, 24)
+        self.assertEqual(result.created[0].account_name, "汇丰中国(5555/066)")
 
     def test_caption_merchant_fallback(self):
         self.assertEqual(

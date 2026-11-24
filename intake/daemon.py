@@ -163,6 +163,9 @@ def handle_callback(client: TelegramClient, service: IntakeService,
 
     if action == "cx":
         state.remove_pending(token)
+        # A previous "修改内容" may have left this chat in edit mode; do not
+        # let the next unrelated message inherit the cancelled message's id.
+        state.set_editing(callback.chat_id, None)
         _edit_or_send(client, callback.chat_id, entry.get("message_id"),
                       "❌ 已取消，未写入账本。", EMPTY_KEYBOARD)
         return

@@ -142,6 +142,7 @@ class DaemonFlowTests(unittest.TestCase):
 
     def test_cancel_callback_writes_nothing(self):
         token = self.preview()
+        self.state.set_editing(42, "100")
         callback = CallbackQuery(id="cb3", chat_id=42, message_id=501,
                                  data=f"cx:{token}")
 
@@ -149,6 +150,7 @@ class DaemonFlowTests(unittest.TestCase):
 
         self.assertEqual(self.api.payloads, [])
         self.assertIsNone(self.state.get_pending(token))
+        self.assertIsNone(self.state.editing_message_id(42))
         self.assertIn("已取消", self.client.edits[-1]["text"])
 
     def test_edit_callback_keeps_source_message_id(self):

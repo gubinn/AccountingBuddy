@@ -17,6 +17,18 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(draft.merchant, "午饭")
         self.assertEqual(draft.account_hint, "微信")
 
+    def test_hsbc_and_three_digit_suffix_are_account_hints(self):
+        drafts = _fast_parse("支出 100 汇丰 尾号066", NOW)
+        self.assertEqual(len(drafts), 1)
+        self.assertIn("汇丰", drafts[0].account_hint)
+        self.assertIn("尾号066", drafts[0].account_hint)
+
+    def test_traditional_chinese_account_hint(self):
+        drafts = _fast_parse("支出 100 匯豐 尾號066", NOW)
+        self.assertEqual(len(drafts), 1)
+        self.assertIn("匯豐", drafts[0].account_hint)
+        self.assertIn("尾號066", drafts[0].account_hint)
+
     def test_explicit_expense(self):
         drafts = _fast_parse("支出 35 打车", NOW)
         self.assertEqual(len(drafts), 1)

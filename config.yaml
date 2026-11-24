@@ -43,7 +43,11 @@ intake:
   # 不填则用 default_account_id，再退回第一个启用账户
   default_account_id: null
   # 消息里出现这些词时使用对应账户，例如：微信: 1
+  # 账户显示名里的银行简称/钱包名（汇丰、招行、微信、支付宝）已自动识别，
+  # 这里只用于补充特殊叫法
   account_aliases: {}
+  # 账户列表自动刷新间隔（秒）；网页新增账户后无需重启 intake
+  account_refresh_seconds: 300
   duplicate_check: true
   duplicate_lookback_days: 1
   # 预览等待确认的时长
